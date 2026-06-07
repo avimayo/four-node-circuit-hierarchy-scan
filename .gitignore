@@ -1,0 +1,8 @@
+results/
+logs/
+hierarchy_heatmap_v*.png
+hierarchy_heatmap_v*.pdf
+hierarchy_barchart.*
+__pycache__/
+*.pyc
+.DS_Store
