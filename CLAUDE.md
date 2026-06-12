@@ -43,16 +43,24 @@ the "Edge analysis" tab visualises this directly: hierarchy frequency (relaxed) 
 
 | Tab | What it shows |
 |-----|---------------|
-| **About** | Biology intro, run statistics, simplex logo, tab guide |
-| **Topology heatmap** | 16×16 grid (rows = backward combos, cols = forward combos); metric selector in left panel |
+| **About** | Biology intro, ODE equations (linear form), run statistics, simplex logo, tab guide |
+| **Topology heatmap** | 16×16 grid (rows = backward combos, cols = forward combos); metric selector inline in tab |
 | **Solution types** | Stacked bar chart of attractor-pattern distribution by backward-edge combo |
-| **Edge analysis** | Left: mean # stable states by (n_fwd, n_bwd). Right: hierarchy freq vs n_bwd scatter |
+| **Edge analysis** | Left: mean # stable states heatmap by (n_fwd, n_bwd). Right: 2×2 scatter grid |
+| **Take-home** | Summary of obvious, key/surprising, in-progress, and open-question findings |
+
+Edge analysis 2×2 scatter grid:
+- Row 1: # distinct stable states vs fwd_frac | # distinct stable states vs bwd_frac
+- Row 2: hierarchy freq (relaxed) vs fwd_frac | hierarchy freq (relaxed) vs bwd_frac
+- Color encodes the complementary edge count (n_bwd for fwd plots, n_fwd for bwd plots)
 
 Key design decisions:
 - Heatmap tick labels are mini circuit PNG diagrams (matplotlib, transparent, white arrows)
+- Bar chart tick images use dark arrows (#333333) — white arrows invisible on white background
 - Two-color state icons: yellow (#FDD835) = active, teal (#00897B) = inactive
-- Bar chart geometry is fixed-width (980px) so `add_layout_image` pixel coords are stable
+- Bar chart fixed-width `_BAR_W, _BAR_H = 1160, 700`; tick images use `yref="y"` data coords with y-axis extended to `range=[-0.18, 1]` — same trick as heatmap (`range=[-1.5, 15.5]`)
 - `N_SAMPLES = 10000` is the per-chunk normalization; 10 chunks → 100k samples/circuit
+- ODE equations: multiplicative-linear (no logistic/carrying capacity term): `ẋ = x · (Σ inputs − r_x)`
 
 ---
 
