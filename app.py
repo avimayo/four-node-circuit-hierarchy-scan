@@ -300,7 +300,10 @@ def build_hover():
         hier_lines = [f"  {bar(f, 6)}  {f:4.0%}  {name}"
                       for (name, _), f in zip(fns, hier_freqs)]
         if all(f >= 0.999 for f in hier_freqs):
-            hier_lines.append("  (every sampled parameter set is hierarchical)")
+            hier_lines.append(
+                f"  100% because all {n_distinct[c]} attractor pattern"
+                f"{'s' if n_distinct[c]>1 else ''} independently satisfy every criterion"
+            )
 
         pat_lines = [f"  {frac:5.1%}  {bar(frac)}  {pat_label(pat)}" for pat, frac in pats]
         hover[ri, ci] = "<br>".join([
