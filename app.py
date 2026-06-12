@@ -584,7 +584,7 @@ def build_heatmap_figure(view):
 
 # ── Bar-plot figure ─────────────────────────────────────────────────────────────
 # Figure geometry constants (fixed width so layout_image coords are predictable)
-_BAR_W, _BAR_H = 1080, 680
+_BAR_W, _BAR_H = 1160, 700
 _BAR_ML, _BAR_MR, _BAR_MT, _BAR_MB = 70, 40, 60, 220
 
 @st.cache_data
@@ -719,85 +719,79 @@ def build_forward_figure():
                            plot_bgcolor="white", paper_bgcolor="white",
                            font=dict(color="black"))
 
-    # ── Backward scatter: hierarchy freq vs bwd_frac ──────────────────────────
-    rng  = np.random.default_rng(42)
-    mask = data.hier_freq.notna() & data.bwd_frac.notna()
-    jx   = rng.uniform(-0.012, 0.012, mask.sum())
+    # ── helper to build one scatter ───────────────────────────────────────────
+    def _scatter(x_col, y_col, x_title, y_title, color_col, cscale,
+                  cbar_title, ytickfmt=None, color_range=None):
+        mask = data[x_col].notna() & data[y_col].notna()
+        jx   = rng.uniform(-0.012, 0.012, mask.sum())
+        grp  = data[mask].groupby(x_col)[y_col]
+        means, sems = grp.mean(), grp.sem().fillna(0)
+        cmin, cmax = (color_range or (data.loc[mask, color_col].min(),
+                                       data.loc[mask, color_col].max()))
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(
+            x=data.loc[mask, x_col] + jx,
+            y=data.loc[mask, y_col],
+            mode="markers",
+            marker=dict(color=data.loc[mask, color_col], colorscale=cscale,
+                        cmin=cmin, cmax=cmax, size=7, opacity=0.55,
+                        colorbar=dict(title=cbar_title, thickness=12, x=1.02)),
+            hovertemplate=f"{x_col}=%{{x:.2f}}<br>{y_col}=%{{y:.3f}}<extra></extra>",
+            showlegend=False,
+        ))
+        fig.add_trace(go.Scatter(
+            x=means.index, y=means.values,
+            error_y=dict(type="data", array=sems.values, visible=True),
+            mode="markers", marker=dict(color="black", size=9, symbol="diamond"),
+            name="mean ± SEM",
+        ))
+        yaxis_kw = dict(title=y_title, **_ax)
+        if ytickfmt:
+            yaxis_kw["tickformat"] = ytickfmt
+            yaxis_kw["range"] = [-0.02, 1.02]
+        fig.update_layout(
+            title=dict(text=f"{y_title}<br><sup>vs {x_title}</sup>",
+                       font=dict(color="black", size=13)),
+            xaxis=dict(title=x_title, range=[-0.05, 1.05], **_ax),
+            yaxis=yaxis_kw,
+            height=300, width=480,
+            margin=dict(l=70, r=80, t=55, b=50),
+            legend=dict(x=0.02, y=0.98, font=dict(color="black")),
+            plot_bgcolor="white", paper_bgcolor="white",
+            font=dict(color="black"),
+        )
+        return fig
 
-    grp_b   = data[mask].groupby("bwd_frac")["hier_freq"]
-    means_b = grp_b.mean()
-    sems_b  = grp_b.sem().fillna(0)
+    rng = np.random.default_rng(42)
 
-    fig_bwd = go.Figure()
-    fig_bwd.add_trace(go.Scatter(
-        x=data.loc[mask, "bwd_frac"] + jx,
-        y=data.loc[mask, "hier_freq"],
-        mode="markers",
-        marker=dict(color=data.loc[mask, "n_fwd"], colorscale="Blues",
-                    cmin=0, cmax=4, size=7, opacity=0.55,
-                    colorbar=dict(title="# Fwd<br>edges", thickness=12, x=1.02,
-                                  tickvals=[0,1,2,3,4])),
-        hovertemplate="bwd_frac=%{x:.2f}<br>hier freq=%{y:.1%}<extra></extra>",
-        showlegend=False,
-    ))
-    fig_bwd.add_trace(go.Scatter(
-        x=means_b.index, y=means_b.values,
-        error_y=dict(type="data", array=sems_b.values, visible=True),
-        mode="markers", marker=dict(color="black", size=9, symbol="diamond"),
-        name="mean ± SEM",
-    ))
-    fig_bwd.update_layout(
-        title=dict(text="Hierarchy frequency vs backward fraction", font=dict(color="black", size=14)),
-        xaxis=dict(title="Backward fraction  (n_bwd / n_total)", range=[-0.05, 1.05], **_ax),
-        yaxis=dict(title="Hierarchy frequency (relaxed)", tickformat=".0%",
-                   range=[-0.02, 1.02], **_ax),
-        **_scatter_layout,
-    )
+    fig_fwd_stable = _scatter("fwd_frac", "n_stable",
+        "Forward fraction  (n_fwd / n_total)", "# Distinct stable states",
+        "n_total", "Viridis", "Total<br>edges")
+    fig_bwd_stable = _scatter("bwd_frac", "n_stable",
+        "Backward fraction  (n_bwd / n_total)", "# Distinct stable states",
+        "n_total", "Viridis", "Total<br>edges")
+    fig_fwd_hier = _scatter("fwd_frac", "hier_freq",
+        "Forward fraction  (n_fwd / n_total)", "Hierarchy freq (relaxed)",
+        "n_bwd", "Oranges", "# Bwd<br>edges",
+        ytickfmt=".0%", color_range=(0, 4))
+    fig_bwd_hier = _scatter("bwd_frac", "hier_freq",
+        "Backward fraction  (n_bwd / n_total)", "Hierarchy freq (relaxed)",
+        "n_fwd", "Blues", "# Fwd<br>edges",
+        ytickfmt=".0%", color_range=(0, 4))
 
-    # ── Forward scatter: n_stable vs fwd_frac ─────────────────────────────────
-    mask2 = data.fwd_frac.notna()
-    jx2   = rng.uniform(-0.012, 0.012, mask2.sum())
-
-    grp_f   = data[mask2].groupby("fwd_frac")["n_stable"]
-    means_f = grp_f.mean()
-    sems_f  = grp_f.sem().fillna(0)
-
-    fig_fwd = go.Figure()
-    fig_fwd.add_trace(go.Scatter(
-        x=data.loc[mask2, "fwd_frac"] + jx2,
-        y=data.loc[mask2, "n_stable"],
-        mode="markers",
-        marker=dict(color=data.loc[mask2, "n_total"], colorscale="Viridis",
-                    size=6, opacity=0.65,
-                    colorbar=dict(title="Total<br>edges", thickness=12, x=1.02)),
-        hovertemplate="fwd_frac=%{x:.2f}<br>n_stable=%{y}<extra></extra>",
-        showlegend=False,
-    ))
-    fig_fwd.add_trace(go.Scatter(
-        x=means_f.index, y=means_f.values,
-        error_y=dict(type="data", array=sems_f.values, visible=True),
-        mode="markers", marker=dict(color="black", size=8),
-        name="mean ± SEM",
-    ))
-    fig_fwd.update_layout(
-        title=dict(text="Attractor diversity vs forward fraction", font=dict(color="black", size=14)),
-        xaxis=dict(title="Forward fraction  (n_fwd / n_total)", range=[-0.05, 1.05], **_ax),
-        yaxis=dict(title="# Distinct stable states", **_ax),
-        **_scatter_layout,
-    )
-
-    return fig_heat, fig_bwd, fig_fwd
+    return fig_heat, fig_fwd_stable, fig_bwd_stable, fig_fwd_hier, fig_bwd_hier
 
 # ══════════════════════════════════════════════════════════════════════════════
 # UI
 # ══════════════════════════════════════════════════════════════════════════════
 st.title("Four-node circuit attractor landscape")
 
-tab_home, tab_heat, tab_bar, tab_fwd = st.tabs([
+tab_home, tab_heat, tab_bar, tab_fwd, tab_takeaway = st.tabs([
     "📖 About",
     "🗺️ Topology heatmap",
     "📊 Solution types",
-    "🔍 Forward-edge analysis",
+    "🔍 Edge analysis",
+    "💡 Take-home",
 ])
 
 # ── Tab 0: Landing page ────────────────────────────────────────────────────────
@@ -962,26 +956,92 @@ with tab_bar:
         "averaged over all 16 forward-edge combinations for that backward-edge combo."
     )
     _bar_fig, _bar_top_pats, _bar_colors = build_bar_figure()
+    # CSS to horizontally center the fixed-width chart
+    st.markdown("""
+<style>
+[data-testid="stPlotlyChart"] > div { margin-left: auto; margin-right: auto; }
+</style>
+""", unsafe_allow_html=True)
     st.plotly_chart(_bar_fig, use_container_width=False)
+    st.markdown(
+        f'<div style="max-width:{_BAR_W}px;margin:0 auto;display:flex;align-items:flex-start;gap:12px;">',
+        unsafe_allow_html=True,
+    )
     _leg_col, _nleg_col = st.columns([6, 1])
     with _leg_col:
         st.markdown(build_bar_legend_html(_bar_top_pats, _bar_colors), unsafe_allow_html=True)
     with _nleg_col:
         st.caption("Node key")
         st.image(build_node_legend_bytes(), width=130)
+    st.markdown("</div>", unsafe_allow_html=True)
 
 # ── Tab 3: forward-edge analysis ───────────────────────────────────────────────
 with tab_fwd:
     st.markdown(
-        "**Left:** mean number of distinct stable states as a function of forward- and backward-edge count.  \n"
-        "**Right top:** hierarchy frequency (relaxed: attractor set contains F, F+M, all-active) "
-        "vs number of backward (TB→FM) edges — colour = number of forward edges.  \n"
-        "**Right bottom:** attractor diversity vs forward fraction — colour = total edges."
+        "**Left:** mean # distinct stable states by (n_fwd, n_bwd) edge counts.  \n"
+        "**Right (2 × 2):** each outcome metric (rows) × each edge direction (columns). "
+        "Colour encodes the complementary edge count."
     )
-    fig_heat, fig_bwd, fig_fwd = build_forward_figure()
-    col1, col2 = st.columns([1, 1], gap="large")
-    with col1:
+    fig_heat, fig_fwd_stable, fig_bwd_stable, fig_fwd_hier, fig_bwd_hier = build_forward_figure()
+    _heat_col, _scatter_col = st.columns([1, 2], gap="large")
+    with _heat_col:
         st.plotly_chart(fig_heat, use_container_width=False)
-    with col2:
-        st.plotly_chart(fig_bwd, use_container_width=False)
-        st.plotly_chart(fig_fwd, use_container_width=False)
+    with _scatter_col:
+        _r1c1, _r1c2 = st.columns(2)
+        with _r1c1:
+            st.plotly_chart(fig_fwd_stable, use_container_width=False)
+        with _r1c2:
+            st.plotly_chart(fig_bwd_stable, use_container_width=False)
+        _r2c1, _r2c2 = st.columns(2)
+        with _r2c1:
+            st.plotly_chart(fig_fwd_hier, use_container_width=False)
+        with _r2c2:
+            st.plotly_chart(fig_bwd_hier, use_container_width=False)
+
+# ── Tab 4: take-home message ───────────────────────────────────────────────────
+with tab_takeaway:
+    _, _tm, _ = st.columns([1, 5, 1])
+    with _tm:
+        st.markdown("""
+## Take-home message
+
+### ✅ Obvious / expected results
+
+- **More edges → more attractor diversity.** Circuits with more active edges have higher Shannon entropy and more distinct attractor types. This reflects a larger effective parameter space.
+- **All-active state (F+M+T+B) becomes more accessible.** In denser circuits the all-active attractor appears as a stable state across a larger fraction of parameter samples.
+- **Forward-edge count alone does not predict hierarchy.** Increasing the proportion of FM→TB forward edges does not raise hierarchy frequency — the forward-fraction scatter is essentially flat (see Edge analysis tab, bottom-left).
+
+---
+
+### 🔑 Key / surprising results
+
+- **Backward signaling (TB→FM) is necessary *and* sufficient for the canonical hierarchy.**
+  The hierarchy-frequency vs backward-fraction scatter shows a sharp jump from ~0 % at zero backward edges to substantial frequency as soon as any backward edge is added.
+  The forward-fraction scatter shows no corresponding trend — ruling out forward edges as drivers.
+
+- **Which specific backward edges matter is visible in the topology heatmap.**
+  The row structure of the heatmap (each row = one backward-edge combination) reveals which TB→FM feedback patterns are most potent. Inspect the "Hierarchy: Canonical F→F+M→all (strict)" view for the clearest signal.
+
+- **Hierarchy is largely insensitive to forward-edge count once feedback is present.**
+  Within the high-hierarchy region of the heatmap, colour (forward combination) varies broadly without strongly tracking hierarchy frequency — suggesting forward edges modulate *how* the hierarchy is expressed, not *whether* it exists.
+
+---
+
+### 🔬 In progress
+
+- **Semistable (ghost) attractors.** The current analysis covers only stable fixed points.
+  Semistable states — stable within their face but with a positive invasion eigenvalue — are available for ~1,670 circuits from the first HPC run and represent quasi-stable transient phenotypes.
+
+---
+
+### ❓ Open questions
+
+- **Mechanistic explanation.** *Why* does backward signaling enable hierarchy?
+  A candidate story: TB→FM feedback creates a positive loop that stabilises the
+  F-only and F+M intermediate states, making them genuine attractors rather than
+  transients. This could be tested analytically in reduced two-node sub-circuits.
+
+- **Robustness to kinetic constants.** The fixed parameters ($p_{FF}$, $p_{MF}$, …, $K_x$, $r_x$)
+  were set from a single biological parameterisation. Do the topology-level results
+  (especially the backward-signaling threshold) survive if those constants are varied?
+""")
