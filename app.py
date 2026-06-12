@@ -70,7 +70,7 @@ _COL_ON  = "#FDD835"   # Material Yellow 600
 _COL_OFF = "#00897B"   # Material Teal 600
 _NODES   = ["F", "M", "T", "B"]
 
-def _state_row_svg(state, cell=11):
+def _state_row_svg(state, cell=14):
     parts = []
     for ni in range(4):
         fill = _COL_ON if state[ni] == "1" else _COL_OFF
@@ -78,17 +78,17 @@ def _state_row_svg(state, cell=11):
                      f'fill="{fill}" stroke="white" stroke-width="0.5"/>')
     return "".join(parts)
 
-def pat_icon_html(pat_str, swatch_color, cell=11):
+def pat_icon_html(pat_str, swatch_color, cell=14):
     """State grid (F/M/T/B columns) + column letter labels + swatch bar at bottom."""
-    LBL_H  = 9    # pixels for F M T B row
-    SW_H   = 5    # pixels for the colour swatch
+    LBL_H  = 12   # pixels for F M T B row
+    SW_H   = 7    # pixels for the colour swatch
     GAP    = 2
     w = 4 * cell
 
     # column letter labels (F / M / T / B in node colours)
     col_labels = "".join(
         f'<text x="{ni*cell + cell//2}" y="{LBL_H - 1}" '
-        f'text-anchor="middle" font-size="7" fill="{_NC_HEX[n]}" '
+        f'text-anchor="middle" font-size="9" fill="{_NC_HEX[n]}" '
         f'font-weight="bold" font-family="sans-serif">{n}</text>'
         for ni, n in enumerate(_NODES)
     )
@@ -97,8 +97,8 @@ def pat_icon_html(pat_str, swatch_color, cell=11):
         total_h = cell + GAP + LBL_H + GAP + SW_H
         return (f'<svg width="{w}" height="{total_h}" xmlns="http://www.w3.org/2000/svg">'
                 f'<rect x="0" y="0" width="{w}" height="{cell}" fill="#555" rx="2"/>'
-                f'<text x="{w//2}" y="{cell//2+3}" text-anchor="middle" '
-                f'font-size="8" fill="#eee" font-family="monospace">other</text>'
+                f'<text x="{w//2}" y="{cell//2+4}" text-anchor="middle" '
+                f'font-size="10" fill="#eee" font-family="monospace">other</text>'
                 f'<g transform="translate(0,{cell+GAP})">{col_labels}</g>'
                 f'<rect x="0" y="{cell+GAP+LBL_H+GAP}" width="{w}" height="{SW_H}" '
                 f'fill="{swatch_color}" rx="1"/></svg>')
@@ -120,11 +120,11 @@ def pat_icon_html(pat_str, swatch_color, cell=11):
 
 def build_bar_legend_html(top_pats, colors):
     key_svg = (
-        f'<svg width="120" height="14" xmlns="http://www.w3.org/2000/svg">'
-        f'<rect x="0" y="1" width="12" height="12" fill="{_COL_ON}" rx="2"/>'
-        f'<text x="16" y="11" font-size="9" fill="currentColor" font-family="sans-serif">on</text>'
-        f'<rect x="40" y="1" width="12" height="12" fill="{_COL_OFF}" rx="2"/>'
-        f'<text x="56" y="11" font-size="9" fill="currentColor" font-family="sans-serif">off</text>'
+        f'<svg width="140" height="18" xmlns="http://www.w3.org/2000/svg">'
+        f'<rect x="0" y="1" width="15" height="15" fill="{_COL_ON}" rx="2"/>'
+        f'<text x="19" y="13" font-size="12" fill="currentColor" font-family="sans-serif">active</text>'
+        f'<rect x="76" y="1" width="15" height="15" fill="{_COL_OFF}" rx="2"/>'
+        f'<text x="95" y="13" font-size="12" fill="currentColor" font-family="sans-serif">off</text>'
         f'</svg>'
     )
     all_pats   = list(top_pats) + ["other"]
@@ -136,13 +136,13 @@ def build_bar_legend_html(top_pats, colors):
         items.append(
             f'<td style="text-align:center;vertical-align:top;padding:4px 10px;">'
             f'{svg}'
-            f'<div style="font-size:8px;color:inherit;max-width:66px;'
-            f'word-wrap:break-word;margin-top:3px;">{lbl}</div></td>'
+            f'<div style="font-size:11px;color:inherit;max-width:80px;'
+            f'word-wrap:break-word;margin-top:4px;">{lbl}</div></td>'
         )
     return (
         f'<div style="text-align:center;padding:6px 0;">'
         f'<div style="display:inline-block;margin-bottom:4px;">{key_svg}'
-        f'  <span style="font-size:9px;color:inherit;vertical-align:middle;">'
+        f'  <span style="font-size:12px;color:inherit;vertical-align:middle;">'
         f'  Columns: F · M · T · B</span></div><br>'
         f'<table style="border-collapse:collapse;display:inline-table;">'
         f'<tr>' + "".join(items) + '</tr></table></div>'
@@ -188,14 +188,14 @@ def _circuit_png_b64(bits, edge_sds, size_in=0.42, dpi=120):
     return "data:image/png;base64," + base64.b64encode(buf.read()).decode()
 
 @st.cache_data
-def build_logo_bytes(size_in=4.2, dpi=120):
-    """Simplex logo: 4 cell-type nodes with directed forward/backward arrows."""
+def build_logo_bytes(size_in=4.8, dpi=130):
+    """Simplex logo: 4 cell-type nodes (letters only) with directed forward/backward arrows."""
     from matplotlib.patches import Circle
 
     BG = "#12122a"
-    fig, ax = plt.subplots(figsize=(size_in, size_in * 1.08), dpi=dpi)
+    fig, ax = plt.subplots(figsize=(size_in, size_in * 0.92), dpi=dpi)
     ax.set_xlim(-0.05, 1.05)
-    ax.set_ylim(-0.26, 1.10)
+    ax.set_ylim(-0.12, 1.10)
     ax.set_aspect("equal")
     ax.axis("off")
     fig.patch.set_facecolor(BG)
@@ -204,7 +204,6 @@ def build_logo_bytes(size_in=4.2, dpi=120):
     # Diamond layout: F=top, M=left, T=right, B=bottom
     pos = {"F": (0.50, 0.92), "M": (0.05, 0.42), "T": (0.95, 0.42), "B": (0.50, 0.02)}
     nc  = {"F": "#4C72B0", "M": "#DD8452", "T": "#55A868", "B": "#C44E52"}
-    names = {"F": "Fibroblasts", "M": "Macrophages", "T": "T-cells", "B": "B-cells"}
 
     fwd = [("F","T"),("F","B"),("M","T"),("M","B")]
     bwd = [("T","F"),("T","M"),("B","F"),("B","M")]
@@ -213,39 +212,31 @@ def build_logo_bytes(size_in=4.2, dpi=120):
         rad = 0.22 if is_fwd else -0.22
         col = "#6BAED6" if is_fwd else "#FD8D3C"
         ax.annotate("", xy=pos[dst], xytext=pos[src],
-                    arrowprops=dict(arrowstyle="-|>", color=col, lw=1.2,
-                                    mutation_scale=12,
-                                    connectionstyle=f"arc3,rad={rad}", alpha=0.75),
+                    arrowprops=dict(arrowstyle="-|>", color=col, lw=1.4,
+                                    mutation_scale=14,
+                                    connectionstyle=f"arc3,rad={rad}", alpha=0.80),
                     zorder=2)
 
-    R = 0.11
-    cx, cy = 0.50, 0.47   # visual center
+    R = 0.12
     for node, (nx, ny) in pos.items():
-        ax.add_patch(Circle((nx, ny), R*1.65, color=nc[node], alpha=0.10, zorder=3))
-        ax.add_patch(Circle((nx, ny), R,      color=nc[node], zorder=4))
-        ax.add_patch(Circle((nx, ny), R, fill=False, edgecolor="white", lw=1.2,
-                             alpha=0.75, zorder=5))
+        ax.add_patch(Circle((nx, ny), R*1.6, color=nc[node], alpha=0.12, zorder=3))
+        ax.add_patch(Circle((nx, ny), R,     color=nc[node], zorder=4))
+        ax.add_patch(Circle((nx, ny), R, fill=False, edgecolor="white", lw=1.4,
+                             alpha=0.80, zorder=5))
         ax.text(nx, ny+0.008, node, ha="center", va="center",
-                fontsize=17, fontweight="bold", color="white",
+                fontsize=22, fontweight="bold", color="white",
                 zorder=6, family="monospace")
-        # cell-type name pushed outward from center
-        dx, dy = nx-cx, ny-cy
-        n = (dx**2+dy**2)**0.5
-        lx = nx + (R+0.14)*dx/n
-        ly = ny + (R+0.14)*dy/n
-        ax.text(lx, ly, names[node], ha="center", va="center",
-                fontsize=10.5, color=nc[node], fontweight="bold", zorder=6)
 
     # Arrow legend
     for yi, (arrow_dir, col, label) in enumerate([
-        ("→", "#6BAED6", "FM → TB   forward signal"),
+        ("→", "#6BAED6", "FM → TB   forward"),
         ("←", "#FD8D3C", "TB → FM   feedback"),
     ]):
-        y = -0.165 - yi*0.058
-        ax.annotate("", xy=(0.28, y), xytext=(0.13, y),
+        y = -0.07 - yi*0.052
+        ax.annotate("", xy=(0.26, y), xytext=(0.12, y),
                     arrowprops=dict(arrowstyle="-|>" if arrow_dir=="→" else "<|-",
-                                    color=col, lw=1.2, mutation_scale=8))
-        ax.text(0.30, y, label, fontsize=9.0, color=col, va="center")
+                                    color=col, lw=1.3, mutation_scale=9))
+        ax.text(0.28, y, label, fontsize=9.5, color=col, va="center")
 
     buf = io.BytesIO()
     fig.savefig(buf, format="png", bbox_inches="tight", dpi=dpi, facecolor=BG)
@@ -539,7 +530,7 @@ def build_heatmap_figure(view):
     annotations = [
         dict(x=ci, y=ri, text=format(z[ri, ci], fmt),
              showarrow=False, xref="x", yref="y",
-             font=dict(size=7, color="white" if (z[ri,ci]-zmin)/span > 0.55 else "black"))
+             font=dict(size=9, color="white" if (z[ri,ci]-zmin)/span > 0.55 else "black"))
         for ri in range(16) for ci in range(16) if not np.isnan(z[ri, ci])
     ]
 
@@ -589,14 +580,14 @@ def build_heatmap_figure(view):
         plot_bgcolor="black",
         margin=dict(l=60, r=60, t=20, b=60),
         hoverlabel=dict(bgcolor="white", bordercolor="#aaa",
-                        font=dict(size=11, family="monospace", color="black")),
+                        font=dict(size=13, family="monospace", color="black")),
     )
     fig.update_xaxes(tickmode="array", tickvals=list(range(16)), ticktext=[""] * 16,
                      ticklen=0, range=[-1.5, 15.5],
-                     title=dict(text="FM→TB forward edges", font=dict(size=11)))
+                     title=dict(text="FM→TB forward edges", font=dict(size=14)))
     fig.update_yaxes(tickmode="array", tickvals=list(range(16)), ticktext=[""] * 16,
                      ticklen=0, range=[-1.5, 15.5],
-                     title=dict(text="TB→FM backward edges", font=dict(size=11)),
+                     title=dict(text="TB→FM backward edges", font=dict(size=14)),
                      scaleanchor="x", scaleratio=1)
     return fig
 
@@ -659,15 +650,17 @@ def build_bar_figure():
 
     fig.update_layout(
         barmode="stack",
-        title="Solution-type distribution by backward-edge combination<br>"
-              "<sup>Each bar = average over all 16 forward-edge variants</sup>",
+        title=dict(text="Solution-type distribution by backward-edge combination<br>"
+                        "<sup>Each bar = average over all 16 forward-edge variants</sup>",
+                   font=dict(size=16)),
         xaxis=dict(tickmode="array", tickvals=list(range(16)), ticktext=[""] * 16,
-                   ticklen=0, title="TB→FM backward edges"),
-        yaxis=dict(title="Fraction of samples", range=[0, 1]),
+                   ticklen=0, title=dict(text="TB→FM backward edges", font=dict(size=14))),
+        yaxis=dict(title=dict(text="Fraction of samples", font=dict(size=14)),
+                   tickfont=dict(size=13), range=[0, 1]),
         width=_BAR_W, height=_BAR_H,
         margin=dict(l=_BAR_ML, r=_BAR_MR, t=_BAR_MT, b=_BAR_MB),
         plot_bgcolor="white",
-        hoverlabel=dict(bgcolor="white", font_size=12),
+        hoverlabel=dict(bgcolor="white", font_size=14),
     )
     return fig, top_pats, colors_used[:len(top_pats)]
 
@@ -694,7 +687,7 @@ def build_forward_figure():
         dict(x=nf, y=nb,
              text=f"{heat[nb,nf]:.2f}<br>(n={counts[nb,nf]})",
              showarrow=False, xref="x", yref="y",
-             font=dict(size=10, color="white" if heat[nb,nf] > 0.65*vmax else "black",
+             font=dict(size=12, color="white" if heat[nb,nf] > 0.65*vmax else "black",
                        family="Arial"))
         for nb in range(5) for nf in range(5) if not np.isnan(heat[nb, nf])
     ]
@@ -712,8 +705,8 @@ def build_forward_figure():
     fig_heat.update_layout(
         annotations=heat_anns,
         title="Mean stable states vs edge-type count",
-        xaxis=dict(tickvals=list(range(5)), title="# Forward edges (FM→TB)", tickfont=dict(size=11)),
-        yaxis=dict(tickvals=list(range(5)), title="# Backward edges (TB→FM)", tickfont=dict(size=11),
+        xaxis=dict(tickvals=list(range(5)), title=dict(text="# Forward edges (FM→TB)", font=dict(size=13)), tickfont=dict(size=12)),
+        yaxis=dict(tickvals=list(range(5)), title=dict(text="# Backward edges (TB→FM)", font=dict(size=13)), tickfont=dict(size=12),
                    scaleanchor="x", scaleratio=1),
         width=460, height=460,
         margin=dict(l=60, r=60, t=50, b=60),
@@ -745,12 +738,12 @@ def build_forward_figure():
         name="mean ± SEM",
     ))
     _ax = dict(color="black", linecolor="black", linewidth=1,
-               tickcolor="black", tickfont=dict(color="black"),
-               title_font=dict(color="black"),
+               tickcolor="black", tickfont=dict(color="black", size=12),
+               title_font=dict(color="black", size=13),
                showgrid=True, gridcolor="#EEEEEE", zeroline=False)
     fig_scatter.update_layout(
         title=dict(text="Stable-state diversity vs forward fraction",
-                   font=dict(color="black")),
+                   font=dict(color="black", size=14)),
         xaxis=dict(title="Forward fraction  (n_fwd / n_total)", range=[-0.05, 1.05], **_ax),
         yaxis=dict(title="# Distinct stable states", **_ax),
         height=460, width=540,
@@ -777,7 +770,7 @@ tab_home, tab_heat, tab_bar, tab_fwd = st.tabs([
 with tab_home:
     col_l, col_m, col_r = st.columns([1, 3, 1])
     with col_l:
-        st.image(build_logo_bytes(), width=280)
+        st.image(build_logo_bytes(), width=320)
     with col_m:
         st.markdown("""
 ## What are we studying?
@@ -876,8 +869,12 @@ Results were aggregated per circuit and stored in `final_results.csv`.
 
 # ── Tab 1: heatmap ─────────────────────────────────────────────────────────────
 with tab_heat:
-    with st.sidebar:
-        st.header("Display metric")
+    if "view_key" not in st.session_state:
+        st.session_state["view_key"] = VIEWS[0]["key"]
+
+    _ctrl_col, _map_col = st.columns([1, 4])
+    with _ctrl_col:
+        st.markdown("**Display metric**")
         view_groups = {
             "🔗 Hierarchy cascades": VIEWS[:4],
             "📊 Attractor statistics": VIEWS[4:7],
@@ -893,31 +890,31 @@ with tab_heat:
                 if st.button(short, key=v["key"], use_container_width=True):
                     st.session_state["view_key"] = v["key"]
             st.markdown("---")
-        st.caption("Hover cells for attractor breakdown · hover tick icons for row/column averages.")
+        st.caption("Hover cells for full breakdown · hover tick icons for row/column averages.")
         st.markdown("**Node key**")
         st.image(build_node_legend_bytes(), width=160)
 
-    if "view_key" not in st.session_state:
-        st.session_state["view_key"] = VIEWS[0]["key"]
-
-    view = next(v for v in VIEWS if v["key"] == st.session_state["view_key"])
-    st.markdown(f"**{view['label']}** — {view['desc']}")
-    st.plotly_chart(build_heatmap_figure(view), use_container_width=False)
+    with _map_col:
+        view = next(v for v in VIEWS if v["key"] == st.session_state["view_key"])
+        st.markdown(f"**{view['label']}** — {view['desc']}")
+        st.plotly_chart(build_heatmap_figure(view), use_container_width=False)
 
 # ── Tab 2: stacked bar ─────────────────────────────────────────────────────────
 with tab_bar:
-    st.markdown(
-        "Each bar shows the fraction of parameter samples in each attractor-pattern type, "
-        "averaged over all 16 forward-edge combinations for that backward-edge combo."
-    )
-    _bar_fig, _bar_top_pats, _bar_colors = build_bar_figure()
-    st.plotly_chart(_bar_fig, use_container_width=False)
-    _leg_col, _nleg_col = st.columns([4, 1])
-    with _leg_col:
-        st.markdown(build_bar_legend_html(_bar_top_pats, _bar_colors), unsafe_allow_html=True)
-    with _nleg_col:
-        st.caption("Node key")
-        st.image(build_node_legend_bytes(), width=130)
+    _, _bar_center, _ = st.columns([0.2, 9.6, 0.2])
+    with _bar_center:
+        st.markdown(
+            "Each bar shows the fraction of parameter samples in each attractor-pattern type, "
+            "averaged over all 16 forward-edge combinations for that backward-edge combo."
+        )
+        _bar_fig, _bar_top_pats, _bar_colors = build_bar_figure()
+        st.plotly_chart(_bar_fig, use_container_width=False)
+        _leg_col, _nleg_col = st.columns([5, 1])
+        with _leg_col:
+            st.markdown(build_bar_legend_html(_bar_top_pats, _bar_colors), unsafe_allow_html=True)
+        with _nleg_col:
+            st.caption("Node key")
+            st.image(build_node_legend_bytes(), width=130)
 
 # ── Tab 3: forward-edge analysis ───────────────────────────────────────────────
 with tab_fwd:
