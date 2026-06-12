@@ -712,29 +712,42 @@ def build_forward_figure():
         margin=dict(l=60, r=60, t=50, b=60),
     )
 
-    mask = data.fwd_frac.notna()
-    rng  = np.random.default_rng(42)
-    jx   = rng.uniform(-0.012, 0.012, mask.sum())
+    # Per-circuit hierarchy frequency (relaxed: attractor set contains {F, F+M, all-active})
+    _HIER_CANON = frozenset({"1000", "1100", "1111"})
+    hier_freq_map = {
+        c: sum(frac for pat, frac in pat_freq[c].items()
+               if _HIER_CANON <= frozenset(pat.split("|")))
+        for c in pat_freq
+    }
+    data["hier_freq"] = data["circuit_index"].map(hier_freq_map)
 
-    grp   = data[mask].groupby("fwd_frac")["n_stable"]
+    mask = data.hier_freq.notna()
+    rng  = np.random.default_rng(42)
+    jx   = rng.uniform(-0.18, 0.18, mask.sum())
+
+    grp   = data[mask].groupby("n_bwd")["hier_freq"]
     means = grp.mean()
     sems  = grp.sem().fillna(0)
 
     fig_scatter = go.Figure()
     fig_scatter.add_trace(go.Scatter(
-        x=data.loc[mask, "fwd_frac"] + jx,
-        y=data.loc[mask, "n_stable"],
+        x=data.loc[mask, "n_bwd"] + jx,
+        y=data.loc[mask, "hier_freq"],
         mode="markers",
-        marker=dict(color=data.loc[mask, "n_total"], colorscale="Viridis",
-                    size=6, opacity=0.65,
-                    colorbar=dict(title="Total edges", thickness=14, x=1.02)),
-        hovertemplate="fwd_frac=%{x:.2f}<br>n_stable=%{y}<extra></extra>",
+        marker=dict(color=data.loc[mask, "n_fwd"], colorscale="Blues",
+                    cmin=0, cmax=4,
+                    size=7, opacity=0.55,
+                    colorbar=dict(title="# Forward<br>edges", thickness=14, x=1.02,
+                                  tickvals=[0,1,2,3,4])),
+        hovertemplate="n_bwd=%{x:.0f}<br>hierarchy freq=%{y:.1%}<extra></extra>",
         showlegend=False,
     ))
     fig_scatter.add_trace(go.Scatter(
         x=means.index, y=means.values,
         error_y=dict(type="data", array=sems.values, visible=True),
-        mode="markers", marker=dict(color="black", size=8),
+        mode="markers+lines",
+        marker=dict(color="black", size=10, symbol="diamond"),
+        line=dict(color="black", width=1.5, dash="dot"),
         name="mean ± SEM",
     ))
     _ax = dict(color="black", linecolor="black", linewidth=1,
@@ -742,12 +755,14 @@ def build_forward_figure():
                title_font=dict(color="black", size=13),
                showgrid=True, gridcolor="#EEEEEE", zeroline=False)
     fig_scatter.update_layout(
-        title=dict(text="Stable-state diversity vs forward fraction",
+        title=dict(text="Hierarchy frequency vs # backward edges (TB→FM)",
                    font=dict(color="black", size=14)),
-        xaxis=dict(title="Forward fraction  (n_fwd / n_total)", range=[-0.05, 1.05], **_ax),
-        yaxis=dict(title="# Distinct stable states", **_ax),
+        xaxis=dict(title="# Backward edges (TB→FM)",
+                   tickvals=[0,1,2,3,4], range=[-0.6, 4.6], **_ax),
+        yaxis=dict(title="Hierarchy frequency (relaxed)", tickformat=".0%",
+                   range=[-0.02, 1.02], **_ax),
         height=460, width=540,
-        margin=dict(l=60, r=80, t=50, b=60),
+        margin=dict(l=70, r=80, t=60, b=60),
         legend=dict(x=0.02, y=0.98, font=dict(color="black")),
         plot_bgcolor="white", paper_bgcolor="white",
         font=dict(color="black"),
@@ -861,7 +876,7 @@ Results were aggregated per circuit and stored in `final_results.csv`.
 |-----|----------|
 | **Topology heatmap** | 16 × 16 grid of all circuit topologies, coloured by a chosen metric (hierarchy frequency, entropy, attractor diversity, …). Rows = backward-edge combinations; columns = forward-edge combinations. Hover any cell for the full attractor-pattern breakdown, hover a tick icon for row/column averages. |
 | **Solution types** | Stacked bar chart showing how often each attractor-pattern type appears, averaged over the 16 forward-edge variants for each backward-edge combination. Hover bars for exact fractions. The icon legend below the chart uses **yellow = cell type active** and **teal = cell type inactive** (columns: F · M · T · B). |
-| **Forward-edge analysis** | Left: heat map of mean number of distinct stable states as a function of forward- vs backward-edge count. Right: scatter of attractor diversity vs the fraction of edges that are forward-directed. |
+| **Edge analysis** | Left: heat map of mean number of distinct stable states as a function of forward- vs backward-edge count. Right: hierarchy frequency (relaxed) vs number of backward (TB→FM) edges — tests whether backward signaling is necessary and sufficient for a hierarchical cascade. |
 
 ---
 *Data collected June 2026*
@@ -920,7 +935,9 @@ with tab_bar:
 with tab_fwd:
     st.markdown(
         "**Left:** mean number of distinct stable states as a function of forward- and backward-edge count.  \n"
-        "**Right:** scatter of stable-state diversity vs the fraction of edges that are forward (FM→TB)."
+        "**Right:** hierarchy frequency (relaxed criterion: attractor set contains F, F+M, and all-active) "
+        "vs the number of backward (TB→FM) edges. Each point is one circuit; colour = number of forward edges. "
+        "The dotted line connects group means ± SEM."
     )
     fig_heat, fig_scatter = build_forward_figure()
     col1, col2 = st.columns([1, 1], gap="large")
