@@ -7,8 +7,71 @@ Read `/Users/Avimayo/CLAUDE.md` first for shared cluster constraints.
 ## Project Goal
 
 Enumerate phenotype attractors (stable steady states) for all 256 four-node
-gene-circuit topologies (F, M, T, B nodes; 8 possible directed edges).
+gene-circuit topologies (F=Fibroblasts, M=Macrophages, T=T-cells, B=B-cells; 8 possible directed edges).
 Parameter space: edge weights sampled from `RandomReal[{0,5}, {nSamples, nActive}]`.
+
+Central biological question: which circuit topologies support a **hierarchical activation
+cascade** F → F+M → F+M+T+B, a pattern associated with productive anti-tumour immunity?
+
+---
+
+## Current Status (2026-06-12)
+
+**Data collection: complete.**  
+`final_results.csv` and `phenotype_table.csv` are present and up to date.
+The Streamlit dashboard (`app.py`) is the primary analysis and visualisation tool.
+
+GitHub repo: `avimayo/four-node-circuit-hierarchy-scan`
+Deploy: Streamlit Community Cloud (auto-deploys on push to `main`)
+
+```bash
+streamlit run app.py          # local dev, port 8501
+git push origin main          # triggers cloud redeploy (~1-3 min)
+```
+
+---
+
+## Key Biological Finding (emerging)
+
+Backward signaling from TB (T/B-cells) to FM (Fibroblasts/Macrophages) appears to be
+a **necessary and sufficient condition** for hierarchical cascades. The right scatter in
+the "Edge analysis" tab visualises this directly: hierarchy frequency (relaxed) vs n_bwd.
+
+---
+
+## Streamlit App — Tab Structure
+
+| Tab | What it shows |
+|-----|---------------|
+| **About** | Biology intro, run statistics, simplex logo, tab guide |
+| **Topology heatmap** | 16×16 grid (rows = backward combos, cols = forward combos); metric selector in left panel |
+| **Solution types** | Stacked bar chart of attractor-pattern distribution by backward-edge combo |
+| **Edge analysis** | Left: mean # stable states by (n_fwd, n_bwd). Right: hierarchy freq vs n_bwd scatter |
+
+Key design decisions:
+- Heatmap tick labels are mini circuit PNG diagrams (matplotlib, transparent, white arrows)
+- Two-color state icons: yellow (#FDD835) = active, teal (#00897B) = inactive
+- Bar chart geometry is fixed-width (980px) so `add_layout_image` pixel coords are stable
+- `N_SAMPLES = 10000` is the per-chunk normalization; 10 chunks → 100k samples/circuit
+
+---
+
+## Data Files
+
+| File | Description |
+|------|-------------|
+| `final_results.csv` | `circuit_index, phenotype_pattern, count` — aggregated over 10 chunks |
+| `phenotype_table.csv` | One row per circuit: `circuit_index, added_edges, n_fwd, n_bwd, solution_*` |
+
+---
+
+## HPC Run History (for reference)
+
+- **256 circuits × 10 chunks = 2,560 jobs**, each 10,000 samples (100k/circuit total)
+- LSF split: `circ3a[1-1280]` + `circ3b[1-1280]` (offset=1280; max array = 2000)
+- Retries: `circ3r` (partial), `circ3r2` (aborted), `circS[1-891]` (stable-only, complete)
+- All output in `results_v2/`; aggregated by `aggregate_v2.py`
+- Seed formula: `circIdx * 100000 + chunkIdx * 1000 + Round[rangeMin * 100]`
 
 ---
 
@@ -16,90 +79,23 @@ Parameter space: edge weights sampled from `RandomReal[{0,5}, {nSamples, nActive
 
 | Script | Purpose |
 |--------|---------|
-| `run_circuit_stable.wls` | **Primary script** — stable attractors only, fast. Range [0,5], 5000 samples default |
-| `run_circuit_v2.wls` | Extended — stable + semistable. Slower (~3-4×). Use for targeted follow-up |
-| `run_chunk.sh` | Decodes flat LSF array index → (circIdx, chunkIdx). Supports offset for split arrays |
-| `run_stable_chunk.sh` | Reads `missing_stable.txt` line $LSB_JOBINDEX → calls `run_circuit_stable.wls` |
-| `submit_v3.sh` | Submitted circ3a + circ3b (first full run, 2560 jobs × 10000 samples) |
-| `aggregate_v2.py` | Collates chunk CSVs → `_agg.csv` per circuit. Run after all jobs complete |
-
----
-
-## Scatter-Gather Structure
-
-- **256 circuits × 10 chunks = 2560 jobs**, each 10 000 samples
-- LSF max array 2000 → split: `circ3a[1-1280]` + `circ3b[1-1280]` (with offset=1280)
-- Seed formula: `circIdx * 100000 + chunkIdx * 1000 + Round[rangeMin * 100]`
-- Output: `results_v2/circuit_XXX_chunkKK_r0_5_stable.csv`
-- Aggregated: `results_v2/circuit_XXX_r0_5_stable_agg.csv`
-
----
-
-## Current State (2026-06-12)
-
-| Array | Job name | Status |
-|-------|----------|--------|
-| First run | `circ3a`, `circ3b` | Complete (~1669/2560 succeeded) |
-| First retry | `circ3r` | Complete (partial success) |
-| Second retry | `circ3r2` | Aborted (exit bug, superseded) |
-| **Active** | `circS[1-891]%200` | Running — stable-only retry for 891 missing chunks |
-
-When `circS` completes (~2h wall time, short queue):
-1. SSH to WEXAC
-2. `cd ~/circuit_hpc && python3 aggregate_v2.py`
-3. Regenerate all figures (see below)
-
----
-
-## Figures to Regenerate (post-aggregation)
-
-All figures must use the **[0,5] range** data from `results_v2/`:
-
-```bash
-python3 make_phenotype_table.py        # rebuild phenotype_table.csv
-python3 hierarchy_heatmap.py           # Fig A — heatmap
-python3 make_analysis_figures.py       # stacked bar + scatter
-python3 make_3d_forward_analysis.py    # 3D forward-edge analysis
-python3 make_combined_figure.py        # combined PDF
-```
-
-Run with `MPLBACKEND=Agg python3 <script>` to avoid display errors.
+| `app.py` | **Primary deliverable** — Streamlit dashboard |
+| `run_circuit_stable.wls` | Mathematica: stable attractors only |
+| `run_circuit_v2.wls` | Mathematica: stable + semistable (3–4× slower) |
+| `aggregate_v2.py` | Collates chunk CSVs → `_agg.csv` per circuit |
+| `make_interactive_heatmap.py` | Standalone HTML heatmap (legacy) |
 
 ---
 
 ## Semistable States
 
-- Available for ~1669 circuits from the first run (`*_semi.csv` files)
-- Semistable = stable within its face (tangent eigenvalues ≤ 0) but positive
-  invasion eigenvalue — ghost attractor / quasi-stable
-- Detection is in `run_circuit_v2.wls` (block-triangular Jacobian)
-- **Not included** in the circS retry (stable-only for speed)
-- Targeted semistable follow-up: run `run_circuit_v2.wls` on circuits of interest
+- Available for ~1,669 circuits from the first run (`*_semi.csv` files in `results_v2/`)
+- **Not included** in the main dashboard (stable attractors only)
+- Targeted follow-up: run `run_circuit_v2.wls` on circuits of interest
 
 ---
 
 ## Job Naming
 
-All circuit LSF jobs must use the `circ` prefix: `circS`, `circ3a`, `circ3r`, etc.
+All circuit LSF jobs must use the `circ` prefix.
 See `/Users/Avimayo/CLAUDE.md` for the full naming convention.
-
----
-
-## Logs
-
-- First run: `logs_v2/`
-- Retry runs: `logs_v3/`
-- circS retry: `logs_v3/` (same directory)
-
----
-
-## Other Active Projects (for cross-agent awareness)
-
-See `/Users/Avimayo/CLAUDE.md` for the full list. The project running in parallel with this one:
-
-**Geiger LR Network Dashboard** — Streamlit web app for liver-lung cell-cell communication
-network analysis (melanoma metastasis, Geiger Lab).
-- Local files: `/Users/Avimayo/Library/CloudStorage/Box-Box/Geiger/dashboard/`
-- GitHub: `avimayo/geiger-lr-network` (private), deployed on Streamlit Community Cloud
-- **No cluster involvement** — entirely local/cloud, no LSF jobs, no WEXAC
-- Current state: GO/KEGG enrichment tab + drug actionability overlays deployed
