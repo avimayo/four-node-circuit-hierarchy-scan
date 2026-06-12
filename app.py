@@ -56,6 +56,55 @@ STATE_LABELS = {
 SEPS = [0.5, 4.5, 10.5, 14.5]
 TAB10 = px.colors.qualitative.Plotly   # 10 colours, similar to matplotlib tab10
 
+# ── Mini state-pattern icon helpers (bar legend) ───────────────────────────────
+_NC_HEX = {"F": "#4C72B0", "M": "#DD8452", "T": "#55A868", "B": "#C44E52"}
+_NODES  = ["F", "M", "T", "B"]
+
+def _state_row_svg(state, cell=11):
+    parts = []
+    for ni, node in enumerate(_NODES):
+        fill = _NC_HEX[node] if state[ni] == "1" else "#DDDDDD"
+        parts.append(f'<rect x="{ni*cell}" y="0" width="{cell}" height="{cell}" '
+                     f'fill="{fill}" stroke="white" stroke-width="0.5"/>')
+    return "".join(parts)
+
+def pat_icon_html(pat_str, swatch_color, cell=11, gap=3):
+    sw = cell - 2
+    if pat_str == "other":
+        w = sw + gap + 4 * cell
+        return (f'<svg width="{w}" height="{cell}" xmlns="http://www.w3.org/2000/svg">'
+                f'<rect x="0" y="0" width="{sw}" height="{cell}" fill="{swatch_color}" rx="1"/>'
+                f'<text x="{sw+gap+2}" y="{cell-2}" font-size="8" fill="#444" '
+                f'font-family="monospace">other</text></svg>')
+    states = sorted(pat_str.split("|"))
+    N = len(states)
+    w = sw + gap + 4 * cell
+    h = N * cell
+    rows = "".join(
+        f'<g transform="translate({sw+gap},{si*cell})">{_state_row_svg(s, cell)}</g>'
+        for si, s in enumerate(states)
+    )
+    return (f'<svg width="{w}" height="{h}" xmlns="http://www.w3.org/2000/svg">'
+            f'<rect x="0" y="0" width="{sw}" height="{h}" fill="{swatch_color}" rx="1"/>'
+            f'{rows}</svg>')
+
+def build_bar_legend_html(top_pats, colors):
+    all_pats   = list(top_pats) + ["other"]
+    all_colors = list(colors) + ["#AAAAAA"]
+    items = []
+    for pat, col in zip(all_pats, all_colors):
+        svg = pat_icon_html(pat, col)
+        lbl = pat_label(pat) if pat != "other" else "other"
+        items.append(
+            f'<td style="text-align:center;vertical-align:top;padding:4px 8px;">'
+            f'{svg}'
+            f'<div style="font-size:8px;color:#333;max-width:60px;'
+            f'word-wrap:break-word;margin-top:2px;">{lbl}</div></td>'
+        )
+    return ('<div style="overflow-x:auto;padding:6px 0;">'
+            '<table style="border-collapse:collapse;"><tr>'
+            + "".join(items) + '</tr></table></div>')
+
 def pat_label(pat):
     return " + ".join(STATE_LABELS.get(s, s) for s in sorted(pat.split("|")))
 
@@ -193,7 +242,7 @@ def build_hover():
         hover[ri, ci] = "<br>".join([
             f"<b>Circuit {c}</b>  —  {n_distinct[c]} attractor type{'s' if n_distinct[c]>1 else ''}"
             f"  |  H = {entropy:.2f} bits",
-            f"<span style='color:#666'>Fwd: {fwd_str}   Bwd: {bwd_str}</span>",
+            f"<span style='color:#333'>Fwd: {fwd_str}   Bwd: {bwd_str}</span>",
             "─" * 38,
             "<b>Hierarchy frequencies</b>",
             *hier_lines,
@@ -277,7 +326,7 @@ def build_heatmap_figure(view):
         plot_bgcolor="black",
         margin=dict(l=140, r=60, t=20, b=140),
         hoverlabel=dict(bgcolor="white", bordercolor="#aaa",
-                        font=dict(size=11, family="monospace")),
+                        font=dict(size=11, family="monospace", color="black")),
     )
     fig.update_xaxes(tickmode="array", tickvals=list(range(16)), ticktext=fwd_labels,
                      tickangle=90, tickfont=dict(size=8),
@@ -309,15 +358,18 @@ def build_bar_figure():
             bwd_pat_mean[bi, pi] = np.mean([pat_freq[c].get(pat, 0.0) for c in circuits])
         bwd_pat_mean[bi, -1] = max(0, 1.0 - bwd_pat_mean[bi, :-1].sum())
 
-    fig = go.Figure()
     all_pats = top_pats + ["other"]
-    for pi, pat in enumerate(all_pats):
+    colors_used = [TAB10[pi % len(TAB10)] for pi in range(len(all_pats))]
+
+    fig = go.Figure()
+    for pi, (pat, col) in enumerate(zip(all_pats, colors_used)):
         label = pat_label(pat) if pat != "other" else "other"
         fig.add_trace(go.Bar(
             name=label,
             x=list(range(16)),
             y=bwd_pat_mean[:, pi],
-            marker_color=TAB10[pi % len(TAB10)],
+            marker_color=col,
+            showlegend=False,
             hovertemplate=f"<b>{label}</b><br>%{{y:.1%}}<extra></extra>",
         ))
 
@@ -334,14 +386,12 @@ def build_bar_figure():
             title="TB→FM backward edges",
         ),
         yaxis=dict(title="Fraction of samples", range=[0, 1]),
-        legend=dict(title="Attractor pattern", orientation="v",
-                    x=1.01, xanchor="left"),
         height=550,
-        margin=dict(l=60, r=220, t=80, b=140),
+        margin=dict(l=60, r=40, t=80, b=140),
         plot_bgcolor="white",
         hoverlabel=dict(bgcolor="white", font_size=12),
     )
-    return fig
+    return fig, top_pats, colors_used[:len(top_pats)]
 
 # ── Forward-analysis figure ────────────────────────────────────────────────────
 @st.cache_data
@@ -428,6 +478,8 @@ def build_forward_figure():
         height=460, width=540,
         margin=dict(l=60, r=80, t=50, b=60),
         legend=dict(x=0.02, y=0.98),
+        plot_bgcolor="white",
+        paper_bgcolor="white",
     )
 
     return fig_heat, fig_scatter
@@ -477,7 +529,10 @@ with tab_bar:
         "Each bar shows the fraction of parameter samples in each attractor-pattern type, "
         "averaged over all 16 forward-edge combinations for that backward-edge combo."
     )
-    st.plotly_chart(build_bar_figure(), use_container_width=True)
+    _bar_fig, _bar_top_pats, _bar_colors = build_bar_figure()
+    st.plotly_chart(_bar_fig, use_container_width=True)
+    st.markdown("**Attractor patterns** (each column = one state; F / M / T / B left→right)")
+    st.markdown(build_bar_legend_html(_bar_top_pats, _bar_colors), unsafe_allow_html=True)
 
 # ── Tab 3: forward-edge analysis ───────────────────────────────────────────────
 with tab_fwd:
