@@ -4,12 +4,17 @@ Repo: avimayo/four-node-circuit-hierarchy-scan
 """
 
 import csv
+import io
 import re
+import base64
 import numpy as np
 import pandas as pd
 import streamlit as st
 import plotly.graph_objects as go
 import plotly.express as px
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 from itertools import product
 from collections import defaultdict
 from pathlib import Path
@@ -53,8 +58,11 @@ STATE_LABELS = {
     "1100": "F+M",     "1101": "F+M+B",   "1110": "F+M+T",   "1111": "F+M+T+B",
 }
 
-SEPS = [0.5, 4.5, 10.5, 14.5]
-TAB10 = px.colors.qualitative.Plotly   # 10 colours, similar to matplotlib tab10
+SEPS  = [0.5, 4.5, 10.5, 14.5]
+TAB10 = px.colors.qualitative.Plotly
+
+def pat_label(pat):
+    return " + ".join(STATE_LABELS.get(s, s) for s in sorted(pat.split("|")))
 
 # ── Mini state-pattern icon helpers (bar legend) ───────────────────────────────
 _NC_HEX = {"F": "#4C72B0", "M": "#DD8452", "T": "#55A868", "B": "#C44E52"}
@@ -105,8 +113,49 @@ def build_bar_legend_html(top_pats, colors):
             '<table style="border-collapse:collapse;"><tr>'
             + "".join(items) + '</tr></table></div>')
 
-def pat_label(pat):
-    return " + ".join(STATE_LABELS.get(s, s) for s in sorted(pat.split("|")))
+# ── Mini circuit PNG helpers (heatmap tick labels) ─────────────────────────────
+_NP_MPL = {"F": (0.20, 0.80), "M": (0.80, 0.80),
+           "T": (0.80, 0.20), "B": (0.20, 0.20)}
+_NC_MPL = {"F": "#4C72B0", "M": "#DD8452", "T": "#55A868", "B": "#C44E52"}
+_FWD_SD = [          # (source_xy, dest_xy) for F→T, M→T, F→B, M→B
+    ((0.20, 0.80), (0.80, 0.20)),
+    ((0.80, 0.80), (0.80, 0.20)),
+    ((0.20, 0.80), (0.20, 0.20)),
+    ((0.80, 0.80), (0.20, 0.20)),
+]
+_BWD_SD = [          # for T→F, T→M, B→F, B→M
+    ((0.80, 0.20), (0.20, 0.80)),
+    ((0.80, 0.20), (0.80, 0.80)),
+    ((0.20, 0.20), (0.20, 0.80)),
+    ((0.20, 0.20), (0.80, 0.80)),
+]
+
+def _circuit_png_b64(bits, edge_sds, size_in=0.42, dpi=120):
+    fig, ax = plt.subplots(figsize=(size_in, size_in), dpi=dpi)
+    ax.set_xlim(0, 1); ax.set_ylim(0, 1)
+    ax.set_aspect("equal")
+    ax.axis("off")
+    fig.patch.set_alpha(0)
+    ax.set_facecolor((1, 1, 1, 0))
+    for b, (src, dst) in zip(bits, edge_sds):
+        if b:
+            ax.annotate("", xy=dst, xytext=src,
+                        arrowprops=dict(arrowstyle="-|>", color="white",
+                                        lw=0.7, mutation_scale=5))
+    for node, (nx, ny) in _NP_MPL.items():
+        ax.plot(nx, ny, "o", ms=3.2, color=_NC_MPL[node], zorder=5, markeredgewidth=0)
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", bbox_inches="tight",
+                transparent=True, dpi=dpi, pad_inches=0.02)
+    plt.close(fig)
+    buf.seek(0)
+    return "data:image/png;base64," + base64.b64encode(buf.read()).decode()
+
+@st.cache_data
+def build_tick_images():
+    fwd_imgs = [_circuit_png_b64(bb, _FWD_SD) for bb in fwd_combos]
+    bwd_imgs = [_circuit_png_b64(bb, _BWD_SD) for bb in bwd_combos]
+    return fwd_imgs, bwd_imgs
 
 # ── Data loading ───────────────────────────────────────────────────────────────
 @st.cache_data
@@ -135,9 +184,6 @@ def load_phenotype_table():
         fwd = tuple(1 if e in edges else 0 for e in FWD_ENAMES_ASCII)
         bwd = tuple(1 if e in edges else 0 for e in BWD_ENAMES_ASCII)
         return fwd, bwd
-
-    fwd_xi = {c: i for i, c in enumerate(fwd_combos)}
-    bwd_yi = {c: i for i, c in enumerate(bwd_combos)}
 
     records = []
     for _, row in df.iterrows():
@@ -232,25 +278,80 @@ def build_hover():
         pats    = sorted(pat_freq[c].items(), key=lambda x: -x[1])
         probs   = np.array(list(pat_freq[c].values()))
         entropy = float(-np.sum(probs * np.log2(np.where(probs > 0, probs, 1))))
+
+        hier_freqs = [sum(frac for p, frac in pat_freq[c].items()
+                         if fn(frozenset(p.split("|")))) for _, fn in fns]
         hier_lines = [
-            f"  {bar(sum(frac for p,frac in pat_freq[c].items() if fn(frozenset(p.split('|')))),6)}"
-            f"  {sum(frac for p,frac in pat_freq[c].items() if fn(frozenset(p.split('|')))):4.0%}"
-            f"  {name}"
-            for name, fn in fns
+            f"  {bar(f, 6)}  {f:4.0%}  {name}"
+            for (name, _), f in zip(fns, hier_freqs)
         ]
+        # Note when all hierarchy criteria are satisfied by every sampled pattern
+        if all(f >= 0.999 for f in hier_freqs):
+            hier_lines.append("  (all sampled parameter sets are hierarchical)")
+
         pat_lines = [f"  {frac:5.1%}  {bar(frac)}  {pat_label(pat)}" for pat, frac in pats]
         hover[ri, ci] = "<br>".join([
             f"<b>Circuit {c}</b>  —  {n_distinct[c]} attractor type{'s' if n_distinct[c]>1 else ''}"
             f"  |  H = {entropy:.2f} bits",
             f"<span style='color:#333'>Fwd: {fwd_str}   Bwd: {bwd_str}</span>",
             "─" * 38,
-            "<b>Hierarchy frequencies</b>",
+            "<b>Hierarchy frequencies</b>  <span style='color:#555'>(fraction of 10k param samples)</span>",
             *hier_lines,
             "─" * 38,
             "<b>All attractor patterns</b>",
             *pat_lines,
         ])
     return hover
+
+@st.cache_data
+def build_tick_hover():
+    """Row/column average statistics for tick-label hover tooltips."""
+    def _stats(circuits):
+        ent_vals, dom_vals, nd_vals = [], [], []
+        for c in circuits:
+            probs = np.array([v for v in pat_freq[c].values() if v > 0])
+            ent_vals.append(-np.sum(probs * np.log2(probs)))
+            dom_vals.append(max(pat_freq[c].values()))
+            nd_vals.append(n_distinct[c])
+        return np.mean(ent_vals), np.mean(dom_vals), np.mean(nd_vals)
+
+    col_hover = []
+    for ci, bb in enumerate(fwd_combos):
+        circuits = [c for c, vec in idx_to_vec.items()
+                    if fwd_bits(vec) == bb and c in pat_freq]
+        lbl = combo_label(bb, FWD_ENAMES)
+        if not circuits:
+            col_hover.append(f"<b>Forward: {lbl}</b><br>No data")
+            continue
+        me, md, mn = _stats(circuits)
+        col_hover.append("<br>".join([
+            f"<b>Forward edges: {lbl}</b>",
+            f"16 backward-edge variants",
+            "─" * 26,
+            f"Mean entropy:      {me:.2f} bits",
+            f"Mean dominant share: {md:.0%}",
+            f"Mean # attractors: {mn:.1f}",
+        ]))
+
+    row_hover = []
+    for ri, bb in enumerate(bwd_combos):
+        circuits = [c for c, vec in idx_to_vec.items()
+                    if bwd_bits(vec) == bb and c in pat_freq]
+        lbl = combo_label(bb, BWD_ENAMES)
+        if not circuits:
+            row_hover.append(f"<b>Backward: {lbl}</b><br>No data")
+            continue
+        me, md, mn = _stats(circuits)
+        row_hover.append("<br>".join([
+            f"<b>Backward edges: {lbl}</b>",
+            f"16 forward-edge variants",
+            "─" * 26,
+            f"Mean entropy:      {me:.2f} bits",
+            f"Mean dominant share: {md:.0%}",
+            f"Mean # attractors: {mn:.1f}",
+        ]))
+
+    return col_hover, row_hover
 
 mats       = build_all_matrices()
 hover_text = build_hover()
@@ -307,6 +408,10 @@ def build_heatmap_figure(view):
              font=dict(size=7, color="white" if (z[ri,ci]-zmin)/span > 0.55 else "black"))
         for ri in range(16) for ci in range(16) if not np.isnan(z[ri, ci])
     ]
+
+    fwd_imgs, bwd_imgs = build_tick_images()
+    col_hover, row_hover = build_tick_hover()
+
     fig = go.Figure(go.Heatmap(
         z=z, text=hover_text,
         hovertemplate="%{text}<extra></extra>",
@@ -320,21 +425,64 @@ def build_heatmap_figure(view):
                       line=dict(color="black", width=3))
         fig.add_shape(type="line", x0=-0.5, x1=15.5, y0=sep, y1=sep,
                       line=dict(color="black", width=3))
+
+    # Mini circuit images at y=-1 (x-axis ticks) and x=-1 (y-axis ticks)
+    # Placed within the extended data-coordinate range [-1.5, 15.5]
+    IMG_SZ = 0.82
+    for ci, img in enumerate(fwd_imgs):
+        fig.add_layout_image(dict(
+            source=img, layer="above",
+            xref="x", x=ci, yref="y", y=-1.0,
+            xanchor="center", yanchor="middle",
+            sizex=IMG_SZ, sizey=IMG_SZ,
+        ))
+    for ri, img in enumerate(bwd_imgs):
+        fig.add_layout_image(dict(
+            source=img, layer="above",
+            xref="x", x=-1.0, yref="y", y=ri,
+            xanchor="center", yanchor="middle",
+            sizex=IMG_SZ, sizey=IMG_SZ,
+        ))
+
+    # Invisible scatter for column/row hover tooltips
+    fig.add_trace(go.Scatter(
+        x=list(range(16)), y=[-1.0] * 16,
+        mode="markers",
+        marker=dict(size=32, opacity=0, color="rgba(0,0,0,0)"),
+        text=col_hover,
+        hovertemplate="%{text}<extra></extra>",
+        showlegend=False,
+    ))
+    fig.add_trace(go.Scatter(
+        x=[-1.0] * 16, y=list(range(16)),
+        mode="markers",
+        marker=dict(size=32, opacity=0, color="rgba(0,0,0,0)"),
+        text=row_hover,
+        hovertemplate="%{text}<extra></extra>",
+        showlegend=False,
+    ))
+
     fig.update_layout(
         annotations=annotations,
-        width=900, height=900,
+        width=920, height=920,
         plot_bgcolor="black",
-        margin=dict(l=140, r=60, t=20, b=140),
+        margin=dict(l=60, r=60, t=20, b=60),
         hoverlabel=dict(bgcolor="white", bordercolor="#aaa",
                         font=dict(size=11, family="monospace", color="black")),
     )
-    fig.update_xaxes(tickmode="array", tickvals=list(range(16)), ticktext=fwd_labels,
-                     tickangle=90, tickfont=dict(size=8),
-                     title=dict(text="FM→TB forward edges", font=dict(size=11)))
-    fig.update_yaxes(tickmode="array", tickvals=list(range(16)), ticktext=bwd_labels,
-                     tickfont=dict(size=8),
-                     title=dict(text="TB→FM backward edges", font=dict(size=11)),
-                     scaleanchor="x", scaleratio=1)
+    fig.update_xaxes(
+        tickmode="array", tickvals=list(range(16)), ticktext=[""] * 16,
+        ticklen=0,
+        range=[-1.5, 15.5],
+        title=dict(text="FM→TB forward edges", font=dict(size=11)),
+    )
+    fig.update_yaxes(
+        tickmode="array", tickvals=list(range(16)), ticktext=[""] * 16,
+        ticklen=0,
+        range=[-1.5, 15.5],
+        title=dict(text="TB→FM backward edges", font=dict(size=11)),
+        scaleanchor="x", scaleratio=1,
+    )
     return fig
 
 # ── Bar-plot figure ────────────────────────────────────────────────────────────
@@ -421,7 +569,6 @@ def build_forward_figure():
         for nb in range(5) for nf in range(5) if not np.isnan(heat[nb, nf])
     ]
 
-    # Panel A: 5×5 heatmap
     fig_heat = go.Figure(go.Heatmap(
         z=heat, colorscale="YlOrRd", zmin=0, zmax=vmax,
         colorbar=dict(title="Mean # stable<br>states", thickness=14),
@@ -442,7 +589,6 @@ def build_forward_figure():
         margin=dict(l=60, r=60, t=50, b=60),
     )
 
-    # Panel B: scatter
     mask = data.fwd_frac.notna()
     rng  = np.random.default_rng(42)
     jx   = rng.uniform(-0.012, 0.012, mask.sum())
@@ -471,18 +617,15 @@ def build_forward_figure():
         mode="markers", marker=dict(color="black", size=8),
         name="mean ± SEM",
     ))
-    _axis_style = dict(
-        color="black", linecolor="black", linewidth=1,
-        tickcolor="black", tickfont=dict(color="black"),
-        title_font=dict(color="black"),
-        showgrid=True, gridcolor="#EEEEEE", zeroline=False,
-    )
+    _ax = dict(color="black", linecolor="black", linewidth=1,
+               tickcolor="black", tickfont=dict(color="black"),
+               title_font=dict(color="black"),
+               showgrid=True, gridcolor="#EEEEEE", zeroline=False)
     fig_scatter.update_layout(
         title=dict(text="Stable-state diversity vs forward fraction",
                    font=dict(color="black")),
-        xaxis=dict(title="Forward fraction  (n_fwd / n_total)", range=[-0.05, 1.05],
-                   **_axis_style),
-        yaxis=dict(title="# Distinct stable states", **_axis_style),
+        xaxis=dict(title="Forward fraction  (n_fwd / n_total)", range=[-0.05, 1.05], **_ax),
+        yaxis=dict(title="# Distinct stable states", **_ax),
         height=460, width=540,
         margin=dict(l=60, r=80, t=50, b=60),
         legend=dict(x=0.02, y=0.98, font=dict(color="black")),
@@ -523,7 +666,7 @@ with tab_heat:
                 if st.button(short, key=v["key"], use_container_width=True):
                     st.session_state["view_key"] = v["key"]
             st.markdown("---")
-        st.caption("Hover over any cell to see the full attractor breakdown.")
+        st.caption("Hover cells for attractor breakdown · hover tick icons for row/column averages.")
 
     if "view_key" not in st.session_state:
         st.session_state["view_key"] = VIEWS[0]["key"]
