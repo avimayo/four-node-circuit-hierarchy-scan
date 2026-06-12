@@ -140,11 +140,11 @@ def build_bar_legend_html(top_pats, colors):
             f'word-wrap:break-word;margin-top:4px;">{lbl}</div></td>'
         )
     return (
-        f'<div style="text-align:center;padding:6px 0;">'
-        f'<div style="display:inline-block;margin-bottom:4px;">{key_svg}'
+        f'<div style="padding:4px 0;">'
+        f'<div style="margin-bottom:4px;">{key_svg}'
         f'  <span style="font-size:12px;color:inherit;vertical-align:middle;">'
-        f'  Columns: F · M · T · B</span></div><br>'
-        f'<table style="border-collapse:collapse;display:inline-table;">'
+        f'  Columns: F · M · T · B</span></div>'
+        f'<table style="border-collapse:collapse;">'
         f'<tr>' + "".join(items) + '</tr></table></div>'
     )
 
@@ -621,21 +621,15 @@ def build_bar_figure():
     for sep in SEPS:
         fig.add_vline(x=sep, line_width=2, line_color="black")
 
-    # Mini circuit tick images for x-axis (backward-edge combos)
+    # Mini circuit tick images: use data coordinates (same strategy as heatmap)
+    # Extend y below 0 so images sit in visible space beneath the x-axis line.
     _, bwd_imgs = build_tick_images()
-    # Axis bottom is at paper_y = MB/H; place images clearly below it
-    img_paper_y = _BAR_MB / _BAR_H - 0.055
-    # 1 bar unit = plot_width / 16;  target image pixel size ≈ 44px
-    plot_px_w   = _BAR_W - _BAR_ML - _BAR_MR          # ~880 px
-    bar_unit_px = plot_px_w / 16                        # ~55 px
-    sizex = 44 / bar_unit_px                            # data units
-    sizey = 44 / _BAR_H                                 # paper fraction
     for bi, img in enumerate(bwd_imgs):
         fig.add_layout_image(dict(
             source=img, layer="above",
-            xref="x", x=bi, yref="paper", y=img_paper_y,
+            xref="x", x=bi, yref="y", y=-0.02,
             xanchor="center", yanchor="top",
-            sizex=sizex, sizey=sizey,
+            sizex=0.82, sizey=0.14,
         ))
 
     fig.update_layout(
@@ -646,7 +640,8 @@ def build_bar_figure():
         xaxis=dict(tickmode="array", tickvals=list(range(16)), ticktext=[""] * 16,
                    ticklen=0, title=dict(text="TB→FM backward edges", font=dict(size=14))),
         yaxis=dict(title=dict(text="Fraction of samples", font=dict(size=14)),
-                   tickfont=dict(size=13), range=[0, 1]),
+                   tickfont=dict(size=13), tickvals=[0, 0.25, 0.5, 0.75, 1.0],
+                   range=[-0.18, 1]),
         width=_BAR_W, height=_BAR_H,
         margin=dict(l=_BAR_ML, r=_BAR_MR, t=_BAR_MT, b=_BAR_MB),
         plot_bgcolor="white",
@@ -710,6 +705,7 @@ def build_forward_figure():
         for c in pat_freq
     }
     data["hier_freq"] = data["circuit_index"].map(hier_freq_map)
+    data["bwd_frac"]  = data["n_bwd"] / data["n_total"]
 
     _ax = dict(color="black", linecolor="black", linewidth=1,
                tickcolor="black", tickfont=dict(color="black", size=12),
@@ -721,39 +717,36 @@ def build_forward_figure():
                            plot_bgcolor="white", paper_bgcolor="white",
                            font=dict(color="black"))
 
-    # ── Backward scatter: hierarchy freq vs n_bwd ──────────────────────────────
-    rng = np.random.default_rng(42)
-    mask = data.hier_freq.notna()
-    jx   = rng.uniform(-0.18, 0.18, mask.sum())
+    # ── Backward scatter: hierarchy freq vs bwd_frac ──────────────────────────
+    rng  = np.random.default_rng(42)
+    mask = data.hier_freq.notna() & data.bwd_frac.notna()
+    jx   = rng.uniform(-0.012, 0.012, mask.sum())
 
-    grp_b   = data[mask].groupby("n_bwd")["hier_freq"]
+    grp_b   = data[mask].groupby("bwd_frac")["hier_freq"]
     means_b = grp_b.mean()
     sems_b  = grp_b.sem().fillna(0)
 
     fig_bwd = go.Figure()
     fig_bwd.add_trace(go.Scatter(
-        x=data.loc[mask, "n_bwd"] + jx,
+        x=data.loc[mask, "bwd_frac"] + jx,
         y=data.loc[mask, "hier_freq"],
         mode="markers",
         marker=dict(color=data.loc[mask, "n_fwd"], colorscale="Blues",
                     cmin=0, cmax=4, size=7, opacity=0.55,
                     colorbar=dict(title="# Fwd<br>edges", thickness=12, x=1.02,
                                   tickvals=[0,1,2,3,4])),
-        hovertemplate="n_bwd=%{x:.0f}<br>hier freq=%{y:.1%}<extra></extra>",
+        hovertemplate="bwd_frac=%{x:.2f}<br>hier freq=%{y:.1%}<extra></extra>",
         showlegend=False,
     ))
     fig_bwd.add_trace(go.Scatter(
         x=means_b.index, y=means_b.values,
         error_y=dict(type="data", array=sems_b.values, visible=True),
-        mode="markers+lines",
-        marker=dict(color="black", size=9, symbol="diamond"),
-        line=dict(color="black", width=1.5, dash="dot"),
+        mode="markers", marker=dict(color="black", size=9, symbol="diamond"),
         name="mean ± SEM",
     ))
     fig_bwd.update_layout(
-        title=dict(text="Hierarchy freq vs # backward edges", font=dict(color="black", size=14)),
-        xaxis=dict(title="# Backward edges (TB→FM)", tickvals=[0,1,2,3,4],
-                   range=[-0.6, 4.6], **_ax),
+        title=dict(text="Hierarchy frequency vs backward fraction", font=dict(color="black", size=14)),
+        xaxis=dict(title="Backward fraction  (n_bwd / n_total)", range=[-0.05, 1.05], **_ax),
         yaxis=dict(title="Hierarchy frequency (relaxed)", tickformat=".0%",
                    range=[-0.02, 1.02], **_ax),
         **_scatter_layout,
@@ -940,20 +933,23 @@ with tab_heat:
 
 # ── Tab 2: stacked bar ─────────────────────────────────────────────────────────
 with tab_bar:
-    _, _bar_center, _ = st.columns([0.2, 9.6, 0.2])
-    with _bar_center:
-        st.markdown(
-            "Each bar shows the fraction of parameter samples in each attractor-pattern type, "
-            "averaged over all 16 forward-edge combinations for that backward-edge combo."
-        )
-        _bar_fig, _bar_top_pats, _bar_colors = build_bar_figure()
-        st.plotly_chart(_bar_fig, use_container_width=False)
-        _leg_col, _nleg_col = st.columns([5, 1])
-        with _leg_col:
-            st.markdown(build_bar_legend_html(_bar_top_pats, _bar_colors), unsafe_allow_html=True)
-        with _nleg_col:
-            st.caption("Node key")
-            st.image(build_node_legend_bytes(), width=130)
+    st.markdown(
+        "Each bar shows the fraction of parameter samples in each attractor-pattern type, "
+        "averaged over all 16 forward-edge combinations for that backward-edge combo."
+    )
+    _bar_fig, _bar_top_pats, _bar_colors = build_bar_figure()
+    st.plotly_chart(_bar_fig, use_container_width=False)
+    st.markdown(
+        '<div style="margin-top:-18px;">',
+        unsafe_allow_html=True,
+    )
+    _leg_col, _nleg_col = st.columns([6, 1])
+    with _leg_col:
+        st.markdown(build_bar_legend_html(_bar_top_pats, _bar_colors), unsafe_allow_html=True)
+    with _nleg_col:
+        st.caption("Node key")
+        st.image(build_node_legend_bytes(), width=130)
+    st.markdown("</div>", unsafe_allow_html=True)
 
 # ── Tab 3: forward-edge analysis ───────────────────────────────────────────────
 with tab_fwd:
