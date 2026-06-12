@@ -193,9 +193,10 @@ def build_logo_bytes(size_in=4.8, dpi=130):
     from matplotlib.patches import Circle
 
     BG = "#12122a"
-    fig, ax = plt.subplots(figsize=(size_in, size_in * 0.92), dpi=dpi)
-    ax.set_xlim(-0.05, 1.05)
-    ax.set_ylim(-0.12, 1.10)
+    fig, ax = plt.subplots(figsize=(size_in, size_in), dpi=dpi)
+    # generous padding so nodes + arc arrows never clip
+    ax.set_xlim(-0.28, 1.28)
+    ax.set_ylim(-0.18, 1.18)
     ax.set_aspect("equal")
     ax.axis("off")
     fig.patch.set_facecolor(BG)
@@ -226,17 +227,6 @@ def build_logo_bytes(size_in=4.8, dpi=130):
         ax.text(nx, ny+0.008, node, ha="center", va="center",
                 fontsize=22, fontweight="bold", color="white",
                 zorder=6, family="monospace")
-
-    # Arrow legend
-    for yi, (arrow_dir, col, label) in enumerate([
-        ("→", "#6BAED6", "FM → TB   forward"),
-        ("←", "#FD8D3C", "TB → FM   feedback"),
-    ]):
-        y = -0.07 - yi*0.052
-        ax.annotate("", xy=(0.26, y), xytext=(0.12, y),
-                    arrowprops=dict(arrowstyle="-|>" if arrow_dir=="→" else "<|-",
-                                    color=col, lw=1.3, mutation_scale=9))
-        ax.text(0.28, y, label, fontsize=9.5, color=col, va="center")
 
     buf = io.BytesIO()
     fig.savefig(buf, format="png", bbox_inches="tight", dpi=dpi, facecolor=BG)
@@ -721,53 +711,87 @@ def build_forward_figure():
     }
     data["hier_freq"] = data["circuit_index"].map(hier_freq_map)
 
-    mask = data.hier_freq.notna()
-    rng  = np.random.default_rng(42)
-    jx   = rng.uniform(-0.18, 0.18, mask.sum())
-
-    grp   = data[mask].groupby("n_bwd")["hier_freq"]
-    means = grp.mean()
-    sems  = grp.sem().fillna(0)
-
-    fig_scatter = go.Figure()
-    fig_scatter.add_trace(go.Scatter(
-        x=data.loc[mask, "n_bwd"] + jx,
-        y=data.loc[mask, "hier_freq"],
-        mode="markers",
-        marker=dict(color=data.loc[mask, "n_fwd"], colorscale="Blues",
-                    cmin=0, cmax=4,
-                    size=7, opacity=0.55,
-                    colorbar=dict(title="# Forward<br>edges", thickness=14, x=1.02,
-                                  tickvals=[0,1,2,3,4])),
-        hovertemplate="n_bwd=%{x:.0f}<br>hierarchy freq=%{y:.1%}<extra></extra>",
-        showlegend=False,
-    ))
-    fig_scatter.add_trace(go.Scatter(
-        x=means.index, y=means.values,
-        error_y=dict(type="data", array=sems.values, visible=True),
-        mode="markers+lines",
-        marker=dict(color="black", size=10, symbol="diamond"),
-        line=dict(color="black", width=1.5, dash="dot"),
-        name="mean ± SEM",
-    ))
     _ax = dict(color="black", linecolor="black", linewidth=1,
                tickcolor="black", tickfont=dict(color="black", size=12),
                title_font=dict(color="black", size=13),
                showgrid=True, gridcolor="#EEEEEE", zeroline=False)
-    fig_scatter.update_layout(
-        title=dict(text="Hierarchy frequency vs # backward edges (TB→FM)",
-                   font=dict(color="black", size=14)),
-        xaxis=dict(title="# Backward edges (TB→FM)",
-                   tickvals=[0,1,2,3,4], range=[-0.6, 4.6], **_ax),
+    _scatter_layout = dict(height=340, width=540,
+                           margin=dict(l=70, r=80, t=50, b=50),
+                           legend=dict(x=0.02, y=0.98, font=dict(color="black")),
+                           plot_bgcolor="white", paper_bgcolor="white",
+                           font=dict(color="black"))
+
+    # ── Backward scatter: hierarchy freq vs n_bwd ──────────────────────────────
+    rng = np.random.default_rng(42)
+    mask = data.hier_freq.notna()
+    jx   = rng.uniform(-0.18, 0.18, mask.sum())
+
+    grp_b   = data[mask].groupby("n_bwd")["hier_freq"]
+    means_b = grp_b.mean()
+    sems_b  = grp_b.sem().fillna(0)
+
+    fig_bwd = go.Figure()
+    fig_bwd.add_trace(go.Scatter(
+        x=data.loc[mask, "n_bwd"] + jx,
+        y=data.loc[mask, "hier_freq"],
+        mode="markers",
+        marker=dict(color=data.loc[mask, "n_fwd"], colorscale="Blues",
+                    cmin=0, cmax=4, size=7, opacity=0.55,
+                    colorbar=dict(title="# Fwd<br>edges", thickness=12, x=1.02,
+                                  tickvals=[0,1,2,3,4])),
+        hovertemplate="n_bwd=%{x:.0f}<br>hier freq=%{y:.1%}<extra></extra>",
+        showlegend=False,
+    ))
+    fig_bwd.add_trace(go.Scatter(
+        x=means_b.index, y=means_b.values,
+        error_y=dict(type="data", array=sems_b.values, visible=True),
+        mode="markers+lines",
+        marker=dict(color="black", size=9, symbol="diamond"),
+        line=dict(color="black", width=1.5, dash="dot"),
+        name="mean ± SEM",
+    ))
+    fig_bwd.update_layout(
+        title=dict(text="Hierarchy freq vs # backward edges", font=dict(color="black", size=14)),
+        xaxis=dict(title="# Backward edges (TB→FM)", tickvals=[0,1,2,3,4],
+                   range=[-0.6, 4.6], **_ax),
         yaxis=dict(title="Hierarchy frequency (relaxed)", tickformat=".0%",
                    range=[-0.02, 1.02], **_ax),
-        height=460, width=540,
-        margin=dict(l=70, r=80, t=60, b=60),
-        legend=dict(x=0.02, y=0.98, font=dict(color="black")),
-        plot_bgcolor="white", paper_bgcolor="white",
-        font=dict(color="black"),
+        **_scatter_layout,
     )
-    return fig_heat, fig_scatter
+
+    # ── Forward scatter: n_stable vs fwd_frac ─────────────────────────────────
+    mask2 = data.fwd_frac.notna()
+    jx2   = rng.uniform(-0.012, 0.012, mask2.sum())
+
+    grp_f   = data[mask2].groupby("fwd_frac")["n_stable"]
+    means_f = grp_f.mean()
+    sems_f  = grp_f.sem().fillna(0)
+
+    fig_fwd = go.Figure()
+    fig_fwd.add_trace(go.Scatter(
+        x=data.loc[mask2, "fwd_frac"] + jx2,
+        y=data.loc[mask2, "n_stable"],
+        mode="markers",
+        marker=dict(color=data.loc[mask2, "n_total"], colorscale="Viridis",
+                    size=6, opacity=0.65,
+                    colorbar=dict(title="Total<br>edges", thickness=12, x=1.02)),
+        hovertemplate="fwd_frac=%{x:.2f}<br>n_stable=%{y}<extra></extra>",
+        showlegend=False,
+    ))
+    fig_fwd.add_trace(go.Scatter(
+        x=means_f.index, y=means_f.values,
+        error_y=dict(type="data", array=sems_f.values, visible=True),
+        mode="markers", marker=dict(color="black", size=8),
+        name="mean ± SEM",
+    ))
+    fig_fwd.update_layout(
+        title=dict(text="Attractor diversity vs forward fraction", font=dict(color="black", size=14)),
+        xaxis=dict(title="Forward fraction  (n_fwd / n_total)", range=[-0.05, 1.05], **_ax),
+        yaxis=dict(title="# Distinct stable states", **_ax),
+        **_scatter_layout,
+    )
+
+    return fig_heat, fig_bwd, fig_fwd
 
 # ══════════════════════════════════════════════════════════════════════════════
 # UI
@@ -935,13 +959,14 @@ with tab_bar:
 with tab_fwd:
     st.markdown(
         "**Left:** mean number of distinct stable states as a function of forward- and backward-edge count.  \n"
-        "**Right:** hierarchy frequency (relaxed criterion: attractor set contains F, F+M, and all-active) "
-        "vs the number of backward (TB→FM) edges. Each point is one circuit; colour = number of forward edges. "
-        "The dotted line connects group means ± SEM."
+        "**Right top:** hierarchy frequency (relaxed: attractor set contains F, F+M, all-active) "
+        "vs number of backward (TB→FM) edges — colour = number of forward edges.  \n"
+        "**Right bottom:** attractor diversity vs forward fraction — colour = total edges."
     )
-    fig_heat, fig_scatter = build_forward_figure()
+    fig_heat, fig_bwd, fig_fwd = build_forward_figure()
     col1, col2 = st.columns([1, 1], gap="large")
     with col1:
         st.plotly_chart(fig_heat, use_container_width=False)
     with col2:
-        st.plotly_chart(fig_scatter, use_container_width=False)
+        st.plotly_chart(fig_bwd, use_container_width=False)
+        st.plotly_chart(fig_fwd, use_container_width=False)
