@@ -471,15 +471,24 @@ def build_forward_figure():
         mode="markers", marker=dict(color="black", size=8),
         name="mean ± SEM",
     ))
+    _axis_style = dict(
+        color="black", linecolor="black", linewidth=1,
+        tickcolor="black", tickfont=dict(color="black"),
+        title_font=dict(color="black"),
+        showgrid=True, gridcolor="#EEEEEE", zeroline=False,
+    )
     fig_scatter.update_layout(
-        title="Stable-state diversity vs forward fraction",
-        xaxis=dict(title="Forward fraction  (n_fwd / n_total)", range=[-0.05, 1.05]),
-        yaxis=dict(title="# Distinct stable states"),
+        title=dict(text="Stable-state diversity vs forward fraction",
+                   font=dict(color="black")),
+        xaxis=dict(title="Forward fraction  (n_fwd / n_total)", range=[-0.05, 1.05],
+                   **_axis_style),
+        yaxis=dict(title="# Distinct stable states", **_axis_style),
         height=460, width=540,
         margin=dict(l=60, r=80, t=50, b=60),
-        legend=dict(x=0.02, y=0.98),
+        legend=dict(x=0.02, y=0.98, font=dict(color="black")),
         plot_bgcolor="white",
         paper_bgcolor="white",
+        font=dict(color="black"),
     )
 
     return fig_heat, fig_scatter
