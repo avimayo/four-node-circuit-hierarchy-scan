@@ -259,7 +259,6 @@ def build_figure(view):
 
     fig.update_layout(
         annotations=annotations,
-        height=720,
         plot_bgcolor="black",
         margin=dict(l=140, r=60, t=20, b=140),
         hoverlabel=dict(bgcolor="white", bordercolor="#aaa",
@@ -274,6 +273,7 @@ def build_figure(view):
         tickmode="array", tickvals=list(range(16)), ticktext=bwd_labels,
         tickfont=dict(size=8),
         title=dict(text="TB→FM backward edges", font=dict(size=11)),
+        scaleanchor="x", scaleratio=1,
     )
     return fig
 
