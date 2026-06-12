@@ -78,34 +78,53 @@ def _state_row_svg(state, cell=11):
                      f'fill="{fill}" stroke="white" stroke-width="0.5"/>')
     return "".join(parts)
 
-def pat_icon_html(pat_str, swatch_color, cell=11, gap=3):
-    sw = cell - 2
+def pat_icon_html(pat_str, swatch_color, cell=11):
+    """State grid (F/M/T/B columns) + column letter labels + swatch bar at bottom."""
+    LBL_H  = 9    # pixels for F M T B row
+    SW_H   = 5    # pixels for the colour swatch
+    GAP    = 2
+    w = 4 * cell
+
+    # column letter labels (F / M / T / B in node colours)
+    col_labels = "".join(
+        f'<text x="{ni*cell + cell//2}" y="{LBL_H - 1}" '
+        f'text-anchor="middle" font-size="7" fill="{_NC_HEX[n]}" '
+        f'font-weight="bold" font-family="sans-serif">{n}</text>'
+        for ni, n in enumerate(_NODES)
+    )
+
     if pat_str == "other":
-        w = sw + gap + 4 * cell
-        return (f'<svg width="{w}" height="{cell}" xmlns="http://www.w3.org/2000/svg">'
-                f'<rect x="0" y="0" width="{sw}" height="{cell}" fill="{swatch_color}" rx="1"/>'
-                f'<text x="{sw+gap+2}" y="{cell-2}" font-size="8" fill="#444" '
-                f'font-family="monospace">other</text></svg>')
+        total_h = cell + GAP + LBL_H + GAP + SW_H
+        return (f'<svg width="{w}" height="{total_h}" xmlns="http://www.w3.org/2000/svg">'
+                f'<rect x="0" y="0" width="{w}" height="{cell}" fill="#555" rx="2"/>'
+                f'<text x="{w//2}" y="{cell//2+3}" text-anchor="middle" '
+                f'font-size="8" fill="#eee" font-family="monospace">other</text>'
+                f'<g transform="translate(0,{cell+GAP})">{col_labels}</g>'
+                f'<rect x="0" y="{cell+GAP+LBL_H+GAP}" width="{w}" height="{SW_H}" '
+                f'fill="{swatch_color}" rx="1"/></svg>')
+
     states = sorted(pat_str.split("|"))
     N = len(states)
-    w = sw + gap + 4 * cell
-    h = N * cell
+    grid_h = N * cell
+    total_h = grid_h + GAP + LBL_H + GAP + SW_H
     rows = "".join(
-        f'<g transform="translate({sw+gap},{si*cell})">{_state_row_svg(s, cell)}</g>'
+        f'<g transform="translate(0,{si*cell})">{_state_row_svg(s, cell)}</g>'
         for si, s in enumerate(states)
     )
-    return (f'<svg width="{w}" height="{h}" xmlns="http://www.w3.org/2000/svg">'
-            f'<rect x="0" y="0" width="{sw}" height="{h}" fill="{swatch_color}" rx="1"/>'
-            f'{rows}</svg>')
+    swatch = (f'<rect x="0" y="{grid_h+GAP+LBL_H+GAP}" '
+              f'width="{w}" height="{SW_H}" fill="{swatch_color}" rx="1"/>')
+    return (f'<svg width="{w}" height="{total_h}" xmlns="http://www.w3.org/2000/svg">'
+            f'{rows}'
+            f'<g transform="translate(0,{grid_h+GAP})">{col_labels}</g>'
+            f'{swatch}</svg>')
 
 def build_bar_legend_html(top_pats, colors):
-    # Color key header
     key_svg = (
         f'<svg width="120" height="14" xmlns="http://www.w3.org/2000/svg">'
         f'<rect x="0" y="1" width="12" height="12" fill="{_COL_ON}" rx="2"/>'
-        f'<text x="16" y="11" font-size="9" fill="#333" font-family="sans-serif">on</text>'
+        f'<text x="16" y="11" font-size="9" fill="currentColor" font-family="sans-serif">on</text>'
         f'<rect x="40" y="1" width="12" height="12" fill="{_COL_OFF}" rx="2"/>'
-        f'<text x="56" y="11" font-size="9" fill="#333" font-family="sans-serif">off</text>'
+        f'<text x="56" y="11" font-size="9" fill="currentColor" font-family="sans-serif">off</text>'
         f'</svg>'
     )
     all_pats   = list(top_pats) + ["other"]
@@ -117,13 +136,13 @@ def build_bar_legend_html(top_pats, colors):
         items.append(
             f'<td style="text-align:center;vertical-align:top;padding:4px 10px;">'
             f'{svg}'
-            f'<div style="font-size:8px;color:#333;max-width:66px;'
+            f'<div style="font-size:8px;color:inherit;max-width:66px;'
             f'word-wrap:break-word;margin-top:3px;">{lbl}</div></td>'
         )
     return (
         f'<div style="text-align:center;padding:6px 0;">'
         f'<div style="display:inline-block;margin-bottom:4px;">{key_svg}'
-        f'  <span style="font-size:9px;color:#666;vertical-align:middle;">'
+        f'  <span style="font-size:9px;color:inherit;vertical-align:middle;">'
         f'  Columns: F · M · T · B</span></div><br>'
         f'<table style="border-collapse:collapse;display:inline-table;">'
         f'<tr>' + "".join(items) + '</tr></table></div>'
@@ -133,6 +152,7 @@ def build_bar_legend_html(top_pats, colors):
 _NP_MPL = {"F": (0.20, 0.80), "M": (0.80, 0.80),
            "T": (0.80, 0.20), "B": (0.20, 0.20)}
 _NC_MPL = {"F": "#4C72B0", "M": "#DD8452", "T": "#55A868", "B": "#C44E52"}
+_NC_HEX = _NC_MPL   # alias used in SVG icon helpers
 _FWD_SD = [
     ((0.20, 0.80), (0.80, 0.20)),   # F→T
     ((0.80, 0.80), (0.80, 0.20)),   # M→T
@@ -166,6 +186,103 @@ def _circuit_png_b64(bits, edge_sds, size_in=0.42, dpi=120):
     plt.close(fig)
     buf.seek(0)
     return "data:image/png;base64," + base64.b64encode(buf.read()).decode()
+
+@st.cache_data
+def build_logo_bytes(size_in=3.6, dpi=120):
+    """Simplex logo: 4 cell-type nodes with directed forward/backward arrows."""
+    from matplotlib.patches import Circle
+
+    BG = "#12122a"
+    fig, ax = plt.subplots(figsize=(size_in, size_in * 1.08), dpi=dpi)
+    ax.set_xlim(-0.05, 1.05)
+    ax.set_ylim(-0.24, 1.10)
+    ax.set_aspect("equal")
+    ax.axis("off")
+    fig.patch.set_facecolor(BG)
+    ax.set_facecolor(BG)
+
+    # Diamond layout: F=top, M=left, T=right, B=bottom
+    pos = {"F": (0.50, 0.92), "M": (0.05, 0.42), "T": (0.95, 0.42), "B": (0.50, 0.02)}
+    nc  = {"F": "#4C72B0", "M": "#DD8452", "T": "#55A868", "B": "#C44E52"}
+    names = {"F": "Fibroblasts", "M": "Macrophages", "T": "T-cells", "B": "B-cells"}
+
+    fwd = [("F","T"),("F","B"),("M","T"),("M","B")]
+    bwd = [("T","F"),("T","M"),("B","F"),("B","M")]
+    for src, dst in fwd + bwd:
+        is_fwd = (src, dst) in fwd
+        rad = 0.22 if is_fwd else -0.22
+        col = "#6BAED6" if is_fwd else "#FD8D3C"
+        ax.annotate("", xy=pos[dst], xytext=pos[src],
+                    arrowprops=dict(arrowstyle="-|>", color=col, lw=1.2,
+                                    mutation_scale=12,
+                                    connectionstyle=f"arc3,rad={rad}", alpha=0.75),
+                    zorder=2)
+
+    R = 0.11
+    cx, cy = 0.50, 0.47   # visual center
+    for node, (nx, ny) in pos.items():
+        ax.add_patch(Circle((nx, ny), R*1.65, color=nc[node], alpha=0.10, zorder=3))
+        ax.add_patch(Circle((nx, ny), R,      color=nc[node], zorder=4))
+        ax.add_patch(Circle((nx, ny), R, fill=False, edgecolor="white", lw=1.2,
+                             alpha=0.75, zorder=5))
+        ax.text(nx, ny+0.008, node, ha="center", va="center",
+                fontsize=17, fontweight="bold", color="white",
+                zorder=6, family="monospace")
+        # cell-type name pushed outward
+        dx, dy = nx-cx, ny-cy
+        n = (dx**2+dy**2)**0.5
+        lx = nx + (R+0.082)*dx/n
+        ly = ny + (R+0.082)*dy/n
+        ax.text(lx, ly, names[node], ha="center", va="center",
+                fontsize=7.5, color=nc[node], fontweight="bold", zorder=6)
+
+    # Arrow legend
+    for yi, (arrow_dir, col, label) in enumerate([
+        ("→", "#6BAED6", "FM → TB   forward signal"),
+        ("←", "#FD8D3C", "TB → FM   feedback"),
+    ]):
+        y = -0.155 - yi*0.048
+        ax.annotate("", xy=(0.28, y), xytext=(0.13, y),
+                    arrowprops=dict(arrowstyle="-|>" if arrow_dir=="→" else "<|-",
+                                    color=col, lw=1.2, mutation_scale=8))
+        ax.text(0.30, y, label, fontsize=6.5, color=col, va="center")
+
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", bbox_inches="tight", dpi=dpi, facecolor=BG)
+    plt.close(fig)
+    buf.seek(0)
+    return buf.read()
+
+
+@st.cache_data
+def build_node_legend_bytes(dpi=110):
+    """2×2 grid: node letter + colour + cell-type name, matching tick-icon layout."""
+    # Grid: F(top-left) M(top-right) / B(bottom-left) T(bottom-right)
+    grid = [["F","M"],["B","T"]]
+    cnames = {"F":"Fibro-\nblasts","M":"Macro-\nphages","T":"T-cells","B":"B-cells"}
+    BG = "#12122a"
+    fig, axes = plt.subplots(2, 2, figsize=(1.9, 1.9), dpi=dpi)
+    fig.patch.set_facecolor(BG)
+    plt.subplots_adjust(hspace=0.05, wspace=0.05)
+    for ri, row in enumerate(grid):
+        for ci, node in enumerate(row):
+            ax = axes[ri][ci]
+            ax.set_facecolor(BG)
+            ax.set_xlim(0,1); ax.set_ylim(0,1)
+            ax.axis("off")
+            from matplotlib.patches import Circle
+            ax.add_patch(Circle((0.5, 0.62), 0.32, color=_NC_MPL[node], zorder=2))
+            ax.text(0.5, 0.62, node, ha="center", va="center",
+                    fontsize=12, fontweight="bold", color="white", zorder=3)
+            ax.text(0.5, 0.16, cnames[node], ha="center", va="center",
+                    fontsize=5.5, color=_NC_MPL[node], fontweight="bold",
+                    zorder=3, multialignment="center")
+    buf = io.BytesIO()
+    fig.savefig(buf, format="png", bbox_inches="tight", dpi=dpi, facecolor=BG)
+    plt.close(fig)
+    buf.seek(0)
+    return buf.read()
+
 
 @st.cache_data
 def build_tick_images():
@@ -485,8 +602,8 @@ def build_heatmap_figure(view):
 
 # ── Bar-plot figure ─────────────────────────────────────────────────────────────
 # Figure geometry constants (fixed width so layout_image coords are predictable)
-_BAR_W, _BAR_H = 980, 600
-_BAR_ML, _BAR_MR, _BAR_MT, _BAR_MB = 60, 40, 60, 190
+_BAR_W, _BAR_H = 980, 620
+_BAR_ML, _BAR_MR, _BAR_MT, _BAR_MB = 60, 40, 60, 220
 
 @st.cache_data
 def build_bar_figure():
@@ -525,8 +642,8 @@ def build_bar_figure():
 
     # Mini circuit tick images for x-axis (backward-edge combos)
     _, bwd_imgs = build_tick_images()
-    # Axis bottom is at paper_y = MB/H; place images just below it
-    img_paper_y = _BAR_MB / _BAR_H - 0.012
+    # Axis bottom is at paper_y = MB/H; place images clearly below it
+    img_paper_y = _BAR_MB / _BAR_H - 0.055
     # 1 bar unit = plot_width / 16;  target image pixel size ≈ 44px
     plot_px_w   = _BAR_W - _BAR_ML - _BAR_MR          # ~880 px
     bar_unit_px = plot_px_w / 16                        # ~55 px
@@ -659,6 +776,10 @@ tab_home, tab_heat, tab_bar, tab_fwd = st.tabs([
 # ── Tab 0: Landing page ────────────────────────────────────────────────────────
 with tab_home:
     col_l, col_m, col_r = st.columns([1, 3, 1])
+    with col_l:
+        st.image(build_logo_bytes(), width=260)
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.image(build_node_legend_bytes(), width=180)
     with col_m:
         st.markdown("""
 ## What are we studying?
