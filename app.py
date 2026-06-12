@@ -663,38 +663,47 @@ with tab_home:
         st.markdown("""
 ## What are we studying?
 
-Gene regulatory networks control which genes are switched on or off inside a cell.
-Even a small circuit of just **four genes** can produce surprisingly rich behaviour —
-multiple stable steady states ("attractors") that correspond to distinct cell identities
-or phenotypes.
+The **tumor microenvironment (TME)** is shaped by complex communication between immune
+and stromal cells. We model a four-cell circuit of key TME players and ask: which
+patterns of cell–cell signalling can give rise to a **hierarchical activation cascade** —
+a stepwise progression from a single active cell type all the way to a fully co-activated
+community?
 
-We are interested in one particular pattern: a **hierarchy of activation**, where the
-network can rest in a single-gene-active state, a two-gene-active state, and ultimately
-a fully-active state — mirroring the stepwise activation cascade seen in many
-developmental and tumour-progression contexts.
+The four cell types are:
+
+| Symbol | Cell type | Role in the TME |
+|--------|-----------|-----------------|
+| **F** | Fibroblasts | Stromal scaffold; remodel the ECM and secrete pro- and anti-tumour factors |
+| **M** | Macrophages | Innate immune sentinels; switch between pro-inflammatory (M1) and immunosuppressive (M2) phenotypes |
+| **T** | T-cells | Adaptive cytotoxic effectors; key mediators of anti-tumour immunity |
+| **B** | B-cells | Humoral immunity; can form tertiary lymphoid structures that correlate with better prognosis |
+
+The **canonical hierarchy F → F+M → F+M+T+B** represents a cascade in which fibroblast
+activation precedes macrophage recruitment, followed by full lymphocyte co-activation —
+a pattern associated with productive anti-tumour immune responses.
 
 ---
 
 ## The circuit model
 
-The four nodes are **F**, **M**, **T**, and **B** (representing four interacting molecular
-species). Between them, up to **8 directed regulatory edges** are possible:
+Each directed edge represents a regulatory interaction (activation or inhibition) from
+one cell type to another. Up to **8 directed edges** are possible:
 
-| Direction | Edges |
-|-----------|-------|
-| Forward (FM → TB) | F→T, M→T, F→B, M→B |
-| Backward (TB → FM) | T→F, T→M, B→F, B→M |
+| Direction | Edges | Interpretation |
+|-----------|-------|----------------|
+| Forward (FM → TB) | F→T, M→T, F→B, M→B | Fibroblasts / macrophages signal to lymphocytes |
+| Backward (TB → FM) | T→F, T→M, B→F, B→M | Lymphocytes feed back onto stromal / innate cells |
 
 Each edge is either present or absent, giving **2⁸ = 256 distinct circuit topologies**.
 For every topology we sample **10,000 random parameter sets** (interaction strengths drawn
 uniformly from [0, 5]) and integrate the ODE system to its stable steady state, recording
-which nodes are on or off at the attractor.
+which cell types are active at the attractor.
 
 ---
 
 ## How the data were collected
 
-The simulations ran on the **WEXAC high-performance cluster** at the Weizmann Institute of
+Simulations ran on the **WEXAC high-performance cluster** at the Weizmann Institute of
 Science using **Wolfram Mathematica 14.3** to solve the ODE system.
 Jobs were submitted via the LSF scheduler — 2,560 array jobs in total
 (256 circuits × 10 independent chunks of 1,000 samples each).
@@ -739,7 +748,7 @@ Results were aggregated per circuit and stored in `final_results.csv`.
 | Tab | Contents |
 |-----|----------|
 | **Topology heatmap** | 16 × 16 grid of all circuit topologies, coloured by a chosen metric (hierarchy frequency, entropy, attractor diversity, …). Rows = backward-edge combinations; columns = forward-edge combinations. Hover any cell for the full attractor-pattern breakdown, hover a tick icon for row/column averages. |
-| **Solution types** | Stacked bar chart showing how often each attractor-pattern type appears, averaged over the 16 forward-edge variants for each backward-edge combination. Hover bars for exact fractions. The icon legend below the chart uses **yellow = node ON** and **teal = node OFF**. |
+| **Solution types** | Stacked bar chart showing how often each attractor-pattern type appears, averaged over the 16 forward-edge variants for each backward-edge combination. Hover bars for exact fractions. The icon legend below the chart uses **yellow = cell type active** and **teal = cell type inactive** (columns: F · M · T · B). |
 | **Forward-edge analysis** | Left: heat map of mean number of distinct stable states as a function of forward- vs backward-edge count. Right: scatter of attractor diversity vs the fraction of edges that are forward-directed. |
 
 ---
