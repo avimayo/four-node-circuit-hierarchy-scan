@@ -64,14 +64,16 @@ TAB10 = px.colors.qualitative.Plotly
 def pat_label(pat):
     return " + ".join(STATE_LABELS.get(s, s) for s in sorted(pat.split("|")))
 
-# ── Mini state-pattern icon helpers (bar legend) ───────────────────────────────
-_NC_HEX = {"F": "#4C72B0", "M": "#DD8452", "T": "#55A868", "B": "#C44E52"}
-_NODES  = ["F", "M", "T", "B"]
+# ── State-pattern icon helpers (bar legend) ────────────────────────────────────
+# Two-colour scheme: yellow = node ON, teal = node OFF
+_COL_ON  = "#FDD835"   # Material Yellow 600
+_COL_OFF = "#00897B"   # Material Teal 600
+_NODES   = ["F", "M", "T", "B"]
 
 def _state_row_svg(state, cell=11):
     parts = []
-    for ni, node in enumerate(_NODES):
-        fill = _NC_HEX[node] if state[ni] == "1" else "#DDDDDD"
+    for ni in range(4):
+        fill = _COL_ON if state[ni] == "1" else _COL_OFF
         parts.append(f'<rect x="{ni*cell}" y="0" width="{cell}" height="{cell}" '
                      f'fill="{fill}" stroke="white" stroke-width="0.5"/>')
     return "".join(parts)
@@ -97,6 +99,15 @@ def pat_icon_html(pat_str, swatch_color, cell=11, gap=3):
             f'{rows}</svg>')
 
 def build_bar_legend_html(top_pats, colors):
+    # Color key header
+    key_svg = (
+        f'<svg width="120" height="14" xmlns="http://www.w3.org/2000/svg">'
+        f'<rect x="0" y="1" width="12" height="12" fill="{_COL_ON}" rx="2"/>'
+        f'<text x="16" y="11" font-size="9" fill="#333" font-family="sans-serif">on</text>'
+        f'<rect x="40" y="1" width="12" height="12" fill="{_COL_OFF}" rx="2"/>'
+        f'<text x="56" y="11" font-size="9" fill="#333" font-family="sans-serif">off</text>'
+        f'</svg>'
+    )
     all_pats   = list(top_pats) + ["other"]
     all_colors = list(colors) + ["#AAAAAA"]
     items = []
@@ -104,30 +115,35 @@ def build_bar_legend_html(top_pats, colors):
         svg = pat_icon_html(pat, col)
         lbl = pat_label(pat) if pat != "other" else "other"
         items.append(
-            f'<td style="text-align:center;vertical-align:top;padding:4px 8px;">'
+            f'<td style="text-align:center;vertical-align:top;padding:4px 10px;">'
             f'{svg}'
-            f'<div style="font-size:8px;color:#333;max-width:60px;'
-            f'word-wrap:break-word;margin-top:2px;">{lbl}</div></td>'
+            f'<div style="font-size:8px;color:#333;max-width:66px;'
+            f'word-wrap:break-word;margin-top:3px;">{lbl}</div></td>'
         )
-    return ('<div style="overflow-x:auto;padding:6px 0;">'
-            '<table style="border-collapse:collapse;"><tr>'
-            + "".join(items) + '</tr></table></div>')
+    return (
+        f'<div style="text-align:center;padding:6px 0;">'
+        f'<div style="display:inline-block;margin-bottom:4px;">{key_svg}'
+        f'  <span style="font-size:9px;color:#666;vertical-align:middle;">'
+        f'  Columns: F · M · T · B</span></div><br>'
+        f'<table style="border-collapse:collapse;display:inline-table;">'
+        f'<tr>' + "".join(items) + '</tr></table></div>'
+    )
 
-# ── Mini circuit PNG helpers (heatmap tick labels) ─────────────────────────────
+# ── Mini circuit PNG helpers (heatmap + bar tick labels) ───────────────────────
 _NP_MPL = {"F": (0.20, 0.80), "M": (0.80, 0.80),
            "T": (0.80, 0.20), "B": (0.20, 0.20)}
 _NC_MPL = {"F": "#4C72B0", "M": "#DD8452", "T": "#55A868", "B": "#C44E52"}
-_FWD_SD = [          # (source_xy, dest_xy) for F→T, M→T, F→B, M→B
-    ((0.20, 0.80), (0.80, 0.20)),
-    ((0.80, 0.80), (0.80, 0.20)),
-    ((0.20, 0.80), (0.20, 0.20)),
-    ((0.80, 0.80), (0.20, 0.20)),
+_FWD_SD = [
+    ((0.20, 0.80), (0.80, 0.20)),   # F→T
+    ((0.80, 0.80), (0.80, 0.20)),   # M→T
+    ((0.20, 0.80), (0.20, 0.20)),   # F→B
+    ((0.80, 0.80), (0.20, 0.20)),   # M→B
 ]
-_BWD_SD = [          # for T→F, T→M, B→F, B→M
-    ((0.80, 0.20), (0.20, 0.80)),
-    ((0.80, 0.20), (0.80, 0.80)),
-    ((0.20, 0.20), (0.20, 0.80)),
-    ((0.20, 0.20), (0.80, 0.80)),
+_BWD_SD = [
+    ((0.80, 0.20), (0.20, 0.80)),   # T→F
+    ((0.80, 0.20), (0.80, 0.80)),   # T→M
+    ((0.20, 0.20), (0.20, 0.80)),   # B→F
+    ((0.20, 0.20), (0.80, 0.80)),   # B→M
 ]
 
 def _circuit_png_b64(bits, edge_sds, size_in=0.42, dpi=120):
@@ -208,7 +224,7 @@ def _cells():
         if c in pat_freq:
             yield c, bwd_combos.index(bwd_bits(vec)), fwd_combos.index(fwd_bits(vec))
 
-# ── Matrix builders (heatmap tab) ──────────────────────────────────────────────
+# ── Matrix builders ────────────────────────────────────────────────────────────
 @st.cache_data
 def build_all_matrices():
     _HIER_CANONICAL = frozenset({"1000", "1100", "1111"})
@@ -281,13 +297,10 @@ def build_hover():
 
         hier_freqs = [sum(frac for p, frac in pat_freq[c].items()
                          if fn(frozenset(p.split("|")))) for _, fn in fns]
-        hier_lines = [
-            f"  {bar(f, 6)}  {f:4.0%}  {name}"
-            for (name, _), f in zip(fns, hier_freqs)
-        ]
-        # Note when all hierarchy criteria are satisfied by every sampled pattern
+        hier_lines = [f"  {bar(f, 6)}  {f:4.0%}  {name}"
+                      for (name, _), f in zip(fns, hier_freqs)]
         if all(f >= 0.999 for f in hier_freqs):
-            hier_lines.append("  (all sampled parameter sets are hierarchical)")
+            hier_lines.append("  (every sampled parameter set is hierarchical)")
 
         pat_lines = [f"  {frac:5.1%}  {bar(frac)}  {pat_label(pat)}" for pat, frac in pats]
         hover[ri, ci] = "<br>".join([
@@ -295,7 +308,8 @@ def build_hover():
             f"  |  H = {entropy:.2f} bits",
             f"<span style='color:#333'>Fwd: {fwd_str}   Bwd: {bwd_str}</span>",
             "─" * 38,
-            "<b>Hierarchy frequencies</b>  <span style='color:#555'>(fraction of 10k param samples)</span>",
+            "<b>Hierarchy frequencies</b>  "
+            "<span style='color:#555'>(fraction of 10 k param samples)</span>",
             *hier_lines,
             "─" * 38,
             "<b>All attractor patterns</b>",
@@ -305,7 +319,6 @@ def build_hover():
 
 @st.cache_data
 def build_tick_hover():
-    """Row/column average statistics for tick-label hover tooltips."""
     def _stats(circuits):
         ent_vals, dom_vals, nd_vals = [], [], []
         for c in circuits:
@@ -328,9 +341,9 @@ def build_tick_hover():
             f"<b>Forward edges: {lbl}</b>",
             f"16 backward-edge variants",
             "─" * 26,
-            f"Mean entropy:      {me:.2f} bits",
+            f"Mean entropy:        {me:.2f} bits",
             f"Mean dominant share: {md:.0%}",
-            f"Mean # attractors: {mn:.1f}",
+            f"Mean # attractors:   {mn:.1f}",
         ]))
 
     row_hover = []
@@ -346,9 +359,9 @@ def build_tick_hover():
             f"<b>Backward edges: {lbl}</b>",
             f"16 forward-edge variants",
             "─" * 26,
-            f"Mean entropy:      {me:.2f} bits",
+            f"Mean entropy:        {me:.2f} bits",
             f"Mean dominant share: {md:.0%}",
-            f"Mean # attractors: {mn:.1f}",
+            f"Mean # attractors:   {mn:.1f}",
         ]))
 
     return col_hover, row_hover
@@ -398,6 +411,7 @@ VIEWS = [
          ann_fmt=".0%", colorbar_title="Dominant<br>share"),
 ]
 
+# ── Heatmap figure ─────────────────────────────────────────────────────────────
 def build_heatmap_figure(view):
     z, zmin, zmax = mats[view["key"]], view["zmin"], view["zmax"]
     span = zmax - zmin if zmax > zmin else 1
@@ -426,40 +440,27 @@ def build_heatmap_figure(view):
         fig.add_shape(type="line", x0=-0.5, x1=15.5, y0=sep, y1=sep,
                       line=dict(color="black", width=3))
 
-    # Mini circuit images at y=-1 (x-axis ticks) and x=-1 (y-axis ticks)
-    # Placed within the extended data-coordinate range [-1.5, 15.5]
     IMG_SZ = 0.82
     for ci, img in enumerate(fwd_imgs):
-        fig.add_layout_image(dict(
-            source=img, layer="above",
-            xref="x", x=ci, yref="y", y=-1.0,
-            xanchor="center", yanchor="middle",
-            sizex=IMG_SZ, sizey=IMG_SZ,
-        ))
+        fig.add_layout_image(dict(source=img, layer="above",
+                                  xref="x", x=ci, yref="y", y=-1.0,
+                                  xanchor="center", yanchor="middle",
+                                  sizex=IMG_SZ, sizey=IMG_SZ))
     for ri, img in enumerate(bwd_imgs):
-        fig.add_layout_image(dict(
-            source=img, layer="above",
-            xref="x", x=-1.0, yref="y", y=ri,
-            xanchor="center", yanchor="middle",
-            sizex=IMG_SZ, sizey=IMG_SZ,
-        ))
+        fig.add_layout_image(dict(source=img, layer="above",
+                                  xref="x", x=-1.0, yref="y", y=ri,
+                                  xanchor="center", yanchor="middle",
+                                  sizex=IMG_SZ, sizey=IMG_SZ))
 
-    # Invisible scatter for column/row hover tooltips
     fig.add_trace(go.Scatter(
-        x=list(range(16)), y=[-1.0] * 16,
-        mode="markers",
+        x=list(range(16)), y=[-1.0] * 16, mode="markers",
         marker=dict(size=32, opacity=0, color="rgba(0,0,0,0)"),
-        text=col_hover,
-        hovertemplate="%{text}<extra></extra>",
-        showlegend=False,
+        text=col_hover, hovertemplate="%{text}<extra></extra>", showlegend=False,
     ))
     fig.add_trace(go.Scatter(
-        x=[-1.0] * 16, y=list(range(16)),
-        mode="markers",
+        x=[-1.0] * 16, y=list(range(16)), mode="markers",
         marker=dict(size=32, opacity=0, color="rgba(0,0,0,0)"),
-        text=row_hover,
-        hovertemplate="%{text}<extra></extra>",
-        showlegend=False,
+        text=row_hover, hovertemplate="%{text}<extra></extra>", showlegend=False,
     ))
 
     fig.update_layout(
@@ -470,22 +471,20 @@ def build_heatmap_figure(view):
         hoverlabel=dict(bgcolor="white", bordercolor="#aaa",
                         font=dict(size=11, family="monospace", color="black")),
     )
-    fig.update_xaxes(
-        tickmode="array", tickvals=list(range(16)), ticktext=[""] * 16,
-        ticklen=0,
-        range=[-1.5, 15.5],
-        title=dict(text="FM→TB forward edges", font=dict(size=11)),
-    )
-    fig.update_yaxes(
-        tickmode="array", tickvals=list(range(16)), ticktext=[""] * 16,
-        ticklen=0,
-        range=[-1.5, 15.5],
-        title=dict(text="TB→FM backward edges", font=dict(size=11)),
-        scaleanchor="x", scaleratio=1,
-    )
+    fig.update_xaxes(tickmode="array", tickvals=list(range(16)), ticktext=[""] * 16,
+                     ticklen=0, range=[-1.5, 15.5],
+                     title=dict(text="FM→TB forward edges", font=dict(size=11)))
+    fig.update_yaxes(tickmode="array", tickvals=list(range(16)), ticktext=[""] * 16,
+                     ticklen=0, range=[-1.5, 15.5],
+                     title=dict(text="TB→FM backward edges", font=dict(size=11)),
+                     scaleanchor="x", scaleratio=1)
     return fig
 
-# ── Bar-plot figure ────────────────────────────────────────────────────────────
+# ── Bar-plot figure ─────────────────────────────────────────────────────────────
+# Figure geometry constants (fixed width so layout_image coords are predictable)
+_BAR_W, _BAR_H = 980, 600
+_BAR_ML, _BAR_MR, _BAR_MT, _BAR_MB = 60, 40, 60, 190
+
 @st.cache_data
 def build_bar_figure():
     pat_totals = defaultdict(float)
@@ -506,36 +505,47 @@ def build_bar_figure():
             bwd_pat_mean[bi, pi] = np.mean([pat_freq[c].get(pat, 0.0) for c in circuits])
         bwd_pat_mean[bi, -1] = max(0, 1.0 - bwd_pat_mean[bi, :-1].sum())
 
-    all_pats = top_pats + ["other"]
+    all_pats    = top_pats + ["other"]
     colors_used = [TAB10[pi % len(TAB10)] for pi in range(len(all_pats))]
 
     fig = go.Figure()
     for pi, (pat, col) in enumerate(zip(all_pats, colors_used)):
         label = pat_label(pat) if pat != "other" else "other"
         fig.add_trace(go.Bar(
-            name=label,
-            x=list(range(16)),
-            y=bwd_pat_mean[:, pi],
-            marker_color=col,
-            showlegend=False,
+            name=label, x=list(range(16)), y=bwd_pat_mean[:, pi],
+            marker_color=col, showlegend=False,
             hovertemplate=f"<b>{label}</b><br>%{{y:.1%}}<extra></extra>",
         ))
 
     for sep in SEPS:
         fig.add_vline(x=sep, line_width=2, line_color="black")
 
+    # Mini circuit tick images for x-axis (backward-edge combos)
+    _, bwd_imgs = build_tick_images()
+    # Axis bottom is at paper_y = MB/H; place images just below it
+    img_paper_y = _BAR_MB / _BAR_H - 0.012
+    # 1 bar unit = plot_width / 16;  target image pixel size ≈ 44px
+    plot_px_w   = _BAR_W - _BAR_ML - _BAR_MR          # ~880 px
+    bar_unit_px = plot_px_w / 16                        # ~55 px
+    sizex = 44 / bar_unit_px                            # data units
+    sizey = 44 / _BAR_H                                 # paper fraction
+    for bi, img in enumerate(bwd_imgs):
+        fig.add_layout_image(dict(
+            source=img, layer="above",
+            xref="x", x=bi, yref="paper", y=img_paper_y,
+            xanchor="center", yanchor="top",
+            sizex=sizex, sizey=sizey,
+        ))
+
     fig.update_layout(
         barmode="stack",
         title="Solution-type distribution by backward-edge combination<br>"
-              "<sup>Each bar = average over 16 forward-edge variants</sup>",
-        xaxis=dict(
-            tickmode="array", tickvals=list(range(16)), ticktext=bwd_labels,
-            tickangle=45, tickfont=dict(size=9),
-            title="TB→FM backward edges",
-        ),
+              "<sup>Each bar = average over all 16 forward-edge variants</sup>",
+        xaxis=dict(tickmode="array", tickvals=list(range(16)), ticktext=[""] * 16,
+                   ticklen=0, title="TB→FM backward edges"),
         yaxis=dict(title="Fraction of samples", range=[0, 1]),
-        height=550,
-        margin=dict(l=60, r=40, t=80, b=140),
+        width=_BAR_W, height=_BAR_H,
+        margin=dict(l=_BAR_ML, r=_BAR_MR, t=_BAR_MT, b=_BAR_MB),
         plot_bgcolor="white",
         hoverlabel=dict(bgcolor="white", font_size=12),
     )
@@ -602,12 +612,9 @@ def build_forward_figure():
         x=data.loc[mask, "fwd_frac"] + jx,
         y=data.loc[mask, "n_stable"],
         mode="markers",
-        marker=dict(
-            color=data.loc[mask, "n_total"],
-            colorscale="Viridis",
-            size=6, opacity=0.65,
-            colorbar=dict(title="Total edges", thickness=14, x=1.02),
-        ),
+        marker=dict(color=data.loc[mask, "n_total"], colorscale="Viridis",
+                    size=6, opacity=0.65,
+                    colorbar=dict(title="Total edges", thickness=14, x=1.02)),
         hovertemplate="fwd_frac=%{x:.2f}<br>n_stable=%{y}<extra></extra>",
         showlegend=False,
     ))
@@ -629,11 +636,9 @@ def build_forward_figure():
         height=460, width=540,
         margin=dict(l=60, r=80, t=50, b=60),
         legend=dict(x=0.02, y=0.98, font=dict(color="black")),
-        plot_bgcolor="white",
-        paper_bgcolor="white",
+        plot_bgcolor="white", paper_bgcolor="white",
         font=dict(color="black"),
     )
-
     return fig_heat, fig_scatter
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -641,11 +646,102 @@ def build_forward_figure():
 # ══════════════════════════════════════════════════════════════════════════════
 st.title("Four-node circuit attractor landscape")
 
-tab_heat, tab_bar, tab_fwd = st.tabs([
+tab_home, tab_heat, tab_bar, tab_fwd = st.tabs([
+    "📖 About",
     "🗺️ Topology heatmap",
-    "📊 Solution types by backward edges",
+    "📊 Solution types",
     "🔍 Forward-edge analysis",
 ])
+
+# ── Tab 0: Landing page ────────────────────────────────────────────────────────
+with tab_home:
+    col_l, col_m, col_r = st.columns([1, 3, 1])
+    with col_m:
+        st.markdown("""
+## What are we studying?
+
+Gene regulatory networks control which genes are switched on or off inside a cell.
+Even a small circuit of just **four genes** can produce surprisingly rich behaviour —
+multiple stable steady states ("attractors") that correspond to distinct cell identities
+or phenotypes.
+
+We are interested in one particular pattern: a **hierarchy of activation**, where the
+network can rest in a single-gene-active state, a two-gene-active state, and ultimately
+a fully-active state — mirroring the stepwise activation cascade seen in many
+developmental and tumour-progression contexts.
+
+---
+
+## The circuit model
+
+The four nodes are **F**, **M**, **T**, and **B** (representing four interacting molecular
+species). Between them, up to **8 directed regulatory edges** are possible:
+
+| Direction | Edges |
+|-----------|-------|
+| Forward (FM → TB) | F→T, M→T, F→B, M→B |
+| Backward (TB → FM) | T→F, T→M, B→F, B→M |
+
+Each edge is either present or absent, giving **2⁸ = 256 distinct circuit topologies**.
+For every topology we sample **10,000 random parameter sets** (interaction strengths drawn
+uniformly from [0, 5]) and integrate the ODE system to its stable steady state, recording
+which nodes are on or off at the attractor.
+
+---
+
+## How the data were collected
+
+The simulations ran on the **WEXAC high-performance cluster** at the Weizmann Institute of
+Science using **Wolfram Mathematica 14.3** to solve the ODE system.
+Jobs were submitted via the LSF scheduler — 2,560 array jobs in total
+(256 circuits × 10 independent chunks of 1,000 samples each).
+Results were aggregated per circuit and stored in `final_results.csv`.
+        """)
+
+        st.markdown("---")
+        st.markdown("### Run statistics")
+
+        # Compute summary numbers from loaded data
+        n_circuits  = len(pat_freq)
+        nd_vals     = list(n_distinct.values())
+        hier_m      = mats["hier_strict"]
+        n_any_hier  = int(np.sum((~np.isnan(hier_m)) & (hier_m > 0)))
+        n_maj_hier  = int(np.sum((~np.isnan(hier_m)) & (hier_m >= 0.5)))
+        max_hier    = float(np.nanmax(hier_m))
+        ent_m       = mats["entropy"]
+        mean_ent    = float(np.nanmean(ent_m))
+
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Circuits analysed", f"{n_circuits} / 256")
+        c2.metric("Samples per circuit", "10,000")
+        c3.metric("Total ODE integrations", f"{n_circuits * 10_000:,}")
+        c4.metric("HPC jobs", "2,560")
+
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Mean distinct attractors", f"{np.mean(nd_vals):.1f}")
+        c2.metric("Max distinct attractors", f"{max(nd_vals)}")
+        c3.metric("Circuits with any\ncanonical hierarchy", f"{n_any_hier}")
+        c4.metric("Circuits >50 % canonical", f"{n_maj_hier}")
+
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Max canonical frequency", f"{max_hier:.0%}")
+        c2.metric("Mean attractor entropy", f"{mean_ent:.2f} bits")
+        c3.metric("Parameter range", "[0, 5]")
+        c4.metric("Cluster", "WEXAC / LSF")
+
+        st.markdown("---")
+        st.markdown("""
+### What each tab shows
+
+| Tab | Contents |
+|-----|----------|
+| **Topology heatmap** | 16 × 16 grid of all circuit topologies, coloured by a chosen metric (hierarchy frequency, entropy, attractor diversity, …). Rows = backward-edge combinations; columns = forward-edge combinations. Hover any cell for the full attractor-pattern breakdown, hover a tick icon for row/column averages. |
+| **Solution types** | Stacked bar chart showing how often each attractor-pattern type appears, averaged over the 16 forward-edge variants for each backward-edge combination. Hover bars for exact fractions. The icon legend below the chart uses **yellow = node ON** and **teal = node OFF**. |
+| **Forward-edge analysis** | Left: heat map of mean number of distinct stable states as a function of forward- vs backward-edge count. Right: scatter of attractor diversity vs the fraction of edges that are forward-directed. |
+
+---
+*Data collected June 2026 · Weizmann Institute of Science*
+        """)
 
 # ── Tab 1: heatmap ─────────────────────────────────────────────────────────────
 with tab_heat:
@@ -682,8 +778,7 @@ with tab_bar:
         "averaged over all 16 forward-edge combinations for that backward-edge combo."
     )
     _bar_fig, _bar_top_pats, _bar_colors = build_bar_figure()
-    st.plotly_chart(_bar_fig, use_container_width=True)
-    st.markdown("**Attractor patterns** (each column = one state; F / M / T / B left→right)")
+    st.plotly_chart(_bar_fig, use_container_width=False)
     st.markdown(build_bar_legend_html(_bar_top_pats, _bar_colors), unsafe_allow_html=True)
 
 # ── Tab 3: forward-edge analysis ───────────────────────────────────────────────
