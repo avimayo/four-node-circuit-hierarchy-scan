@@ -188,14 +188,14 @@ def _circuit_png_b64(bits, edge_sds, size_in=0.42, dpi=120):
     return "data:image/png;base64," + base64.b64encode(buf.read()).decode()
 
 @st.cache_data
-def build_logo_bytes(size_in=3.6, dpi=120):
+def build_logo_bytes(size_in=4.2, dpi=120):
     """Simplex logo: 4 cell-type nodes with directed forward/backward arrows."""
     from matplotlib.patches import Circle
 
     BG = "#12122a"
     fig, ax = plt.subplots(figsize=(size_in, size_in * 1.08), dpi=dpi)
     ax.set_xlim(-0.05, 1.05)
-    ax.set_ylim(-0.24, 1.10)
+    ax.set_ylim(-0.26, 1.10)
     ax.set_aspect("equal")
     ax.axis("off")
     fig.patch.set_facecolor(BG)
@@ -228,24 +228,24 @@ def build_logo_bytes(size_in=3.6, dpi=120):
         ax.text(nx, ny+0.008, node, ha="center", va="center",
                 fontsize=17, fontweight="bold", color="white",
                 zorder=6, family="monospace")
-        # cell-type name pushed outward
+        # cell-type name pushed outward from center
         dx, dy = nx-cx, ny-cy
         n = (dx**2+dy**2)**0.5
-        lx = nx + (R+0.082)*dx/n
-        ly = ny + (R+0.082)*dy/n
+        lx = nx + (R+0.14)*dx/n
+        ly = ny + (R+0.14)*dy/n
         ax.text(lx, ly, names[node], ha="center", va="center",
-                fontsize=7.5, color=nc[node], fontweight="bold", zorder=6)
+                fontsize=10.5, color=nc[node], fontweight="bold", zorder=6)
 
     # Arrow legend
     for yi, (arrow_dir, col, label) in enumerate([
         ("→", "#6BAED6", "FM → TB   forward signal"),
         ("←", "#FD8D3C", "TB → FM   feedback"),
     ]):
-        y = -0.155 - yi*0.048
+        y = -0.165 - yi*0.058
         ax.annotate("", xy=(0.28, y), xytext=(0.13, y),
                     arrowprops=dict(arrowstyle="-|>" if arrow_dir=="→" else "<|-",
                                     color=col, lw=1.2, mutation_scale=8))
-        ax.text(0.30, y, label, fontsize=6.5, color=col, va="center")
+        ax.text(0.30, y, label, fontsize=9.0, color=col, va="center")
 
     buf = io.BytesIO()
     fig.savefig(buf, format="png", bbox_inches="tight", dpi=dpi, facecolor=BG)
@@ -777,9 +777,7 @@ tab_home, tab_heat, tab_bar, tab_fwd = st.tabs([
 with tab_home:
     col_l, col_m, col_r = st.columns([1, 3, 1])
     with col_l:
-        st.image(build_logo_bytes(), width=260)
-        st.markdown("<br>", unsafe_allow_html=True)
-        st.image(build_node_legend_bytes(), width=180)
+        st.image(build_logo_bytes(), width=280)
     with col_m:
         st.markdown("""
 ## What are we studying?
@@ -896,6 +894,8 @@ with tab_heat:
                     st.session_state["view_key"] = v["key"]
             st.markdown("---")
         st.caption("Hover cells for attractor breakdown · hover tick icons for row/column averages.")
+        st.markdown("**Node key**")
+        st.image(build_node_legend_bytes(), width=160)
 
     if "view_key" not in st.session_state:
         st.session_state["view_key"] = VIEWS[0]["key"]
@@ -912,7 +912,12 @@ with tab_bar:
     )
     _bar_fig, _bar_top_pats, _bar_colors = build_bar_figure()
     st.plotly_chart(_bar_fig, use_container_width=False)
-    st.markdown(build_bar_legend_html(_bar_top_pats, _bar_colors), unsafe_allow_html=True)
+    _leg_col, _nleg_col = st.columns([4, 1])
+    with _leg_col:
+        st.markdown(build_bar_legend_html(_bar_top_pats, _bar_colors), unsafe_allow_html=True)
+    with _nleg_col:
+        st.caption("Node key")
+        st.image(build_node_legend_bytes(), width=130)
 
 # ── Tab 3: forward-edge analysis ───────────────────────────────────────────────
 with tab_fwd:
