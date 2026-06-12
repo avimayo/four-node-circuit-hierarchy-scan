@@ -166,7 +166,7 @@ _BWD_SD = [
     ((0.20, 0.20), (0.80, 0.80)),   # B→M
 ]
 
-def _circuit_png_b64(bits, edge_sds, size_in=0.42, dpi=120):
+def _circuit_png_b64(bits, edge_sds, size_in=0.42, dpi=120, arrow_color="white"):
     fig, ax = plt.subplots(figsize=(size_in, size_in), dpi=dpi)
     ax.set_xlim(0, 1); ax.set_ylim(0, 1)
     ax.set_aspect("equal")
@@ -176,7 +176,7 @@ def _circuit_png_b64(bits, edge_sds, size_in=0.42, dpi=120):
     for b, (src, dst) in zip(bits, edge_sds):
         if b:
             ax.annotate("", xy=dst, xytext=src,
-                        arrowprops=dict(arrowstyle="-|>", color="white",
+                        arrowprops=dict(arrowstyle="-|>", color=arrow_color,
                                         lw=0.7, mutation_scale=5))
     for node, (nx, ny) in _NP_MPL.items():
         ax.plot(nx, ny, "o", ms=3.2, color=_NC_MPL[node], zorder=5, markeredgewidth=0)
@@ -267,9 +267,10 @@ def build_node_legend_bytes(dpi=110):
 
 @st.cache_data
 def build_tick_images():
-    fwd_imgs = [_circuit_png_b64(bb, _FWD_SD) for bb in fwd_combos]
-    bwd_imgs = [_circuit_png_b64(bb, _BWD_SD) for bb in bwd_combos]
-    return fwd_imgs, bwd_imgs
+    fwd_imgs      = [_circuit_png_b64(bb, _FWD_SD, arrow_color="white")   for bb in fwd_combos]
+    bwd_imgs      = [_circuit_png_b64(bb, _BWD_SD, arrow_color="white")   for bb in bwd_combos]
+    bwd_imgs_dark = [_circuit_png_b64(bb, _BWD_SD, arrow_color="#333333") for bb in bwd_combos]
+    return fwd_imgs, bwd_imgs, bwd_imgs_dark
 
 # ── Data loading ───────────────────────────────────────────────────────────────
 @st.cache_data
@@ -524,7 +525,7 @@ def build_heatmap_figure(view):
         for ri in range(16) for ci in range(16) if not np.isnan(z[ri, ci])
     ]
 
-    fwd_imgs, bwd_imgs = build_tick_images()
+    fwd_imgs, bwd_imgs, _ = build_tick_images()
     col_hover, row_hover = build_tick_hover()
 
     fig = go.Figure(go.Heatmap(
@@ -583,8 +584,8 @@ def build_heatmap_figure(view):
 
 # ── Bar-plot figure ─────────────────────────────────────────────────────────────
 # Figure geometry constants (fixed width so layout_image coords are predictable)
-_BAR_W, _BAR_H = 980, 620
-_BAR_ML, _BAR_MR, _BAR_MT, _BAR_MB = 60, 40, 60, 220
+_BAR_W, _BAR_H = 1080, 680
+_BAR_ML, _BAR_MR, _BAR_MT, _BAR_MB = 70, 40, 60, 220
 
 @st.cache_data
 def build_bar_figure():
@@ -623,7 +624,8 @@ def build_bar_figure():
 
     # Mini circuit tick images: use data coordinates (same strategy as heatmap)
     # Extend y below 0 so images sit in visible space beneath the x-axis line.
-    _, bwd_imgs = build_tick_images()
+    _, _, bwd_imgs_dark = build_tick_images()
+    bwd_imgs = bwd_imgs_dark
     for bi, img in enumerate(bwd_imgs):
         fig.add_layout_image(dict(
             source=img, layer="above",
@@ -830,8 +832,8 @@ a pattern associated with productive anti-tumour immune responses.
 
 ## The circuit model
 
-Each directed edge represents a regulatory interaction (activation or inhibition) from
-one cell type to another. Up to **8 directed edges** are possible:
+Each directed edge represents a regulatory interaction from one cell type to another.
+Up to **8 directed edges** are possible:
 
 | Direction | Edges | Interpretation |
 |-----------|-------|----------------|
@@ -842,6 +844,28 @@ Each edge is either present or absent, giving **2⁸ = 256 distinct circuit topo
 For every topology we sample **100,000 random parameter sets** (interaction strengths drawn
 uniformly from [0, 5]) and integrate the ODE system to its stable steady state, recording
 which cell types are active at the attractor.
+
+### ODE system
+        """)
+
+        st.latex(r"""
+\dot{F} = F \bigl(P_{BF}\,B + p_{FF}\,F + p_{MF}\,M + P_{TF}\,T - r_F\bigr)
+""")
+        st.latex(r"""
+\dot{M} = M \bigl(P_{BM}\,B + p_{FM}\,F + p_{MM}\,M + P_{TM}\,T - r_M\bigr)
+""")
+        st.latex(r"""
+\dot{T} = T \bigl(P_{FT}\,F + P_{MT}\,M + p_{TT}\,T - p_{BT}\,B - r_T\bigr)
+""")
+        st.latex(r"""
+\dot{B} = B \bigl(P_{FB}\,F + P_{MB}\,M + p_{TB}\,T - p_{BB}\,B - r_B\bigr)
+""")
+        st.markdown(r"""
+**Uppercase** $P_{XY} \sim \mathcal{U}[0,5]$ — free edge-strength parameters
+(set to 0 when edge X→Y is absent).
+**Lowercase** $p_{xy}$ — fixed kinetic constants; $r_x$ — basal decay rates.
+Each equation is multiplicative-linear: the $x \cdot (\cdots)$ structure ensures
+$\dot{x}=0$ at $x=0$, so the all-inactive state is always a trivial fixed point.
 
 ---
 
@@ -939,17 +963,12 @@ with tab_bar:
     )
     _bar_fig, _bar_top_pats, _bar_colors = build_bar_figure()
     st.plotly_chart(_bar_fig, use_container_width=False)
-    st.markdown(
-        '<div style="margin-top:-18px;">',
-        unsafe_allow_html=True,
-    )
     _leg_col, _nleg_col = st.columns([6, 1])
     with _leg_col:
         st.markdown(build_bar_legend_html(_bar_top_pats, _bar_colors), unsafe_allow_html=True)
     with _nleg_col:
         st.caption("Node key")
         st.image(build_node_legend_bytes(), width=130)
-    st.markdown("</div>", unsafe_allow_html=True)
 
 # ── Tab 3: forward-edge analysis ───────────────────────────────────────────────
 with tab_fwd:
