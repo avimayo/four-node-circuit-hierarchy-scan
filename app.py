@@ -312,7 +312,7 @@ def build_hover():
             f"<span style='color:#333'>Fwd: {fwd_str}   Bwd: {bwd_str}</span>",
             "─" * 38,
             "<b>Hierarchy frequencies</b>  "
-            "<span style='color:#555'>(fraction of 10 k param samples)</span>",
+            "<span style='color:#555'>(fraction of 100 k param samples)</span>",
             *hier_lines,
             "─" * 38,
             "<b>All attractor patterns</b>",
@@ -695,7 +695,7 @@ one cell type to another. Up to **8 directed edges** are possible:
 | Backward (TB → FM) | T→F, T→M, B→F, B→M | Lymphocytes feed back onto stromal / innate cells |
 
 Each edge is either present or absent, giving **2⁸ = 256 distinct circuit topologies**.
-For every topology we sample **10,000 random parameter sets** (interaction strengths drawn
+For every topology we sample **100,000 random parameter sets** (interaction strengths drawn
 uniformly from [0, 5]) and integrate the ODE system to its stable steady state, recording
 which cell types are active at the attractor.
 
@@ -703,10 +703,10 @@ which cell types are active at the attractor.
 
 ## How the data were collected
 
-Simulations ran on the **WEXAC high-performance cluster** at the Weizmann Institute of
-Science using **Wolfram Mathematica 14.3** to solve the ODE system.
+Simulations ran on a **high-performance computing cluster** using
+**Wolfram Mathematica 14.3** to solve the ODE system.
 Jobs were submitted via the LSF scheduler — 2,560 array jobs in total
-(256 circuits × 10 independent chunks of 1,000 samples each).
+(256 circuits × 10 independent chunks of 10,000 samples each = **100,000 samples per circuit**).
 Results were aggregated per circuit and stored in `final_results.csv`.
         """)
 
@@ -725,8 +725,8 @@ Results were aggregated per circuit and stored in `final_results.csv`.
 
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("Circuits analysed", f"{n_circuits} / 256")
-        c2.metric("Samples per circuit", "10,000")
-        c3.metric("Total ODE integrations", f"{n_circuits * 10_000:,}")
+        c2.metric("Samples per circuit", "100,000")
+        c3.metric("Total ODE integrations", f"{n_circuits * 100_000:,}")
         c4.metric("HPC jobs", "2,560")
 
         c1, c2, c3, c4 = st.columns(4)
@@ -739,7 +739,7 @@ Results were aggregated per circuit and stored in `final_results.csv`.
         c1.metric("Max canonical frequency", f"{max_hier:.0%}")
         c2.metric("Mean attractor entropy", f"{mean_ent:.2f} bits")
         c3.metric("Parameter range", "[0, 5]")
-        c4.metric("Cluster", "WEXAC / LSF")
+        c4.metric("Scheduler", "LSF")
 
         st.markdown("---")
         st.markdown("""
@@ -752,7 +752,7 @@ Results were aggregated per circuit and stored in `final_results.csv`.
 | **Forward-edge analysis** | Left: heat map of mean number of distinct stable states as a function of forward- vs backward-edge count. Right: scatter of attractor diversity vs the fraction of edges that are forward-directed. |
 
 ---
-*Data collected June 2026 · Weizmann Institute of Science*
+*Data collected June 2026*
         """)
 
 # ── Tab 1: heatmap ─────────────────────────────────────────────────────────────
