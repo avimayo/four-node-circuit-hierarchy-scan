@@ -259,6 +259,7 @@ def build_figure(view):
 
     fig.update_layout(
         annotations=annotations,
+        width=900, height=900,
         plot_bgcolor="black",
         margin=dict(l=140, r=60, t=20, b=140),
         hoverlabel=dict(bgcolor="white", bordercolor="#aaa",
@@ -308,4 +309,4 @@ st.title("Four-node circuit attractor landscape")
 st.markdown(f"**{view['label']}** — {view['desc']}")
 
 fig = build_figure(view)
-st.plotly_chart(fig, use_container_width=True)
+st.plotly_chart(fig, use_container_width=False)
