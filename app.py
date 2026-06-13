@@ -884,7 +884,7 @@ def build_forward_figure():
             x=means.index, y=means.values,
             error_y=dict(type="data", array=sems.values, visible=True),
             mode="markers", marker=dict(color="black", size=9, symbol="diamond"),
-            name="mean ± SEM",
+            name="mean ± SEM", showlegend=False,
         ))
         yaxis_kw = dict(title=y_title, **_ax)
         if ytickfmt:
