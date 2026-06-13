@@ -329,6 +329,7 @@ def build_all_matrices():
     _HIER_CANONICAL = frozenset({"1000", "1100", "1111"})
     _HIER_EXACT_A   = frozenset({"0000", "1000", "1100", "1111"})
     _HIER_EXACT_B   = frozenset({"0000", "0011", "1000", "1100", "1111"})
+    _HIER_4STEP     = frozenset({"0000", "1000", "1100", "1110", "1111"})
     _ONE_NODE = frozenset(s for s in ALL_STATES if s.count("1") == 1)
     _TWO_NODE = frozenset(s for s in ALL_STATES if s.count("1") == 2)
 
@@ -359,6 +360,7 @@ def build_all_matrices():
         "hier_strict":  hier_mat(lambda s: _HIER_CANONICAL <= s and (
                             s == _HIER_EXACT_A or s == frozenset({"0000","0011","1000","1100","1111"}))),
         "hier_relaxed": hier_mat(lambda s: _HIER_CANONICAL <= s),
+        "hier_4step":   hier_mat(lambda s: _HIER_4STEP <= s),
         "hier_1_2_all": hier_mat(lambda s: "1111" in s and bool(_ONE_NODE & s) and bool(_TWO_NODE & s)),
         "hier_1_all":   hier_mat(lambda s: "1111" in s and bool(_ONE_NODE & s)),
         "ndistinct":    nd,
@@ -376,12 +378,14 @@ def build_hover():
     _HIER_CANONICAL = frozenset({"1000", "1100", "1111"})
     _HIER_EXACT_A   = frozenset({"0000", "1000", "1100", "1111"})
     _HIER_EXACT_B   = frozenset({"0000", "0011", "1000", "1100", "1111"})
+    _HIER_4STEP     = frozenset({"0000", "1000", "1100", "1110", "1111"})
     _ONE_NODE = frozenset(s for s in ALL_STATES if s.count("1") == 1)
     _TWO_NODE = frozenset(s for s in ALL_STATES if s.count("1") == 2)
 
     fns = [
         ("Canonical F→F+M→all (strict)", lambda s: _HIER_CANONICAL <= s and (s == _HIER_EXACT_A or s == _HIER_EXACT_B)),
         ("Contains F→F+M→all",           lambda s: _HIER_CANONICAL <= s),
+        ("∅→F→F+M→F+M+T→all",           lambda s: _HIER_4STEP <= s),
         ("Any 1→2→all",                  lambda s: "1111" in s and bool(_ONE_NODE & s) and bool(_TWO_NODE & s)),
         ("Any 1→all",                    lambda s: "1111" in s and bool(_ONE_NODE & s)),
     ]
@@ -481,6 +485,10 @@ VIEWS = [
          desc="Attractor set includes {F, F+M, all} — extra states allowed",
          key="hier_relaxed",  colorscale="YlOrRd", zmin=0, zmax=1,
          ann_fmt=".0%", colorbar_title="Hierarchy<br>frequency"),
+    dict(label="Hierarchy: ∅→F→F+M→F+M+T→all",
+         desc="Attractor set includes {∅, F, F+M, F+M+T, all} — full 5-step cascade",
+         key="hier_4step",    colorscale="YlOrRd", zmin=0, zmax=1,
+         ann_fmt=".0%", colorbar_title="Hierarchy<br>frequency"),
     dict(label="Hierarchy: Any 1-node → 2-node → all",
          desc="Attractor set has ≥1 single-node, ≥1 two-node, and the all-active state",
          key="hier_1_2_all",  colorscale="YlOrRd", zmin=0, zmax=1,
@@ -565,11 +573,26 @@ def build_heatmap_figure(view):
         text=row_hover, hovertemplate="%{text}<extra></extra>", showlegend=False,
     ))
 
+    # Embed node key to the right of the colorbar
+    _nk_b64 = "data:image/png;base64," + base64.b64encode(build_node_legend_bytes()).decode()
+    fig.add_layout_image(dict(
+        source=_nk_b64, layer="above",
+        xref="paper", x=1.14, yref="paper", y=0.42,
+        xanchor="left", yanchor="top",
+        sizex=0.17, sizey=0.17,
+    ))
+    nk_label = dict(
+        text="Node key",
+        xref="paper", x=1.225, yref="paper", y=0.43,
+        xanchor="center", yanchor="bottom",
+        showarrow=False, font=dict(size=12, color="white"),
+    )
+
     fig.update_layout(
-        annotations=annotations,
-        width=920, height=920,
+        annotations=annotations + [nk_label],
+        width=1050, height=920,
         plot_bgcolor="black",
-        margin=dict(l=60, r=60, t=20, b=60),
+        margin=dict(l=60, r=190, t=20, b=60),
         hoverlabel=dict(bgcolor="white", bordercolor="#aaa",
                         font=dict(size=13, family="monospace", color="black")),
     )
@@ -616,7 +639,11 @@ def build_bar_figure():
         fig.add_trace(go.Bar(
             name=label, x=list(range(16)), y=bwd_pat_mean[:, pi],
             marker_color=col, showlegend=False,
-            hovertemplate=f"<b>{label}</b><br>%{{y:.1%}}<extra></extra>",
+            customdata=bwd_labels,
+            hovertemplate=(
+                f"<b>%{{customdata}}</b><br>"
+                f"{label}: %{{y:.1%}}<extra></extra>"
+            ),
         ))
 
     for sep in SEPS:
@@ -926,9 +953,9 @@ with tab_heat:
     with _ctrl_col:
         st.markdown("**Display metric**")
         view_groups = {
-            "🔗 Hierarchy cascades": VIEWS[:4],
-            "📊 Attractor statistics": VIEWS[4:7],
-            "🔵 State frequencies": VIEWS[7:],
+            "🔗 Hierarchy cascades": VIEWS[:5],
+            "📊 Attractor statistics": VIEWS[5:8],
+            "🔵 State frequencies": VIEWS[8:],
         }
         for group_name, group_views in view_groups.items():
             st.markdown(f"**{group_name}**")
@@ -945,18 +972,7 @@ with tab_heat:
     with _map_col:
         view = next(v for v in VIEWS if v["key"] == st.session_state["view_key"])
         st.markdown(f"**{view['label']}** — {view['desc']}")
-        _chart_col, _nkey_col = st.columns([9, 1])
-        with _chart_col:
-            st.plotly_chart(build_heatmap_figure(view), use_container_width=False)
-        with _nkey_col:
-            _node_b64 = base64.b64encode(build_node_legend_bytes()).decode()
-            st.markdown(
-                f'<div style="margin-top:300px;text-align:center;">'
-                f'<div style="font-size:12px;font-weight:bold;margin-bottom:6px;">Node key</div>'
-                f'<img src="data:image/png;base64,{_node_b64}" width="160">'
-                f'</div>',
-                unsafe_allow_html=True,
-            )
+        st.plotly_chart(build_heatmap_figure(view), use_container_width=False)
 
 # ── Tab 2: stacked bar ─────────────────────────────────────────────────────────
 with tab_bar:
