@@ -941,12 +941,14 @@ with tab_heat:
                     st.session_state["view_key"] = v["key"]
             st.markdown("---")
         st.caption("Hover cells for full breakdown · hover tick icons for row/column averages.")
-        st.markdown("**Node key**")
-        st.image(build_node_legend_bytes(), width=160)
 
     with _map_col:
         view = next(v for v in VIEWS if v["key"] == st.session_state["view_key"])
-        st.markdown(f"**{view['label']}** — {view['desc']}")
+        _title_col, _key_col = st.columns([5, 1])
+        with _title_col:
+            st.markdown(f"**{view['label']}** — {view['desc']}")
+        with _key_col:
+            st.image(build_node_legend_bytes(), width=130)
         st.plotly_chart(build_heatmap_figure(view), use_container_width=False)
 
 # ── Tab 2: stacked bar ─────────────────────────────────────────────────────────
