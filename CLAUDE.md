@@ -15,11 +15,13 @@ cascade** F → F+M → F+M+T+B, a pattern associated with productive anti-tumou
 
 ---
 
-## Current Status (2026-06-12)
+## Current Status (2026-06-13)
 
-**Data collection: complete.**  
+**Data collection: complete (stable attractors).**  
 `final_results.csv` and `phenotype_table.csv` are present and up to date.
 The Streamlit dashboard (`app.py`) is the primary analysis and visualisation tool.
+
+**Semistable / ghost-attractor runs in progress** (see HPC section below).
 
 GitHub repo: `avimayo/four-node-circuit-hierarchy-scan`
 Deploy: Streamlit Community Cloud (auto-deploys on push to `main`)
@@ -61,6 +63,10 @@ Key design decisions:
 - Bar chart fixed-width `_BAR_W, _BAR_H = 1160, 700`; tick images use `yref="y"` data coords with y-axis extended to `range=[-0.18, 1]` — same trick as heatmap (`range=[-1.5, 15.5]`)
 - `N_SAMPLES = 10000` is the per-chunk normalization; 10 chunks → 100k samples/circuit
 - ODE equations: multiplicative-linear (no logistic/carrying capacity term): `ẋ = x · (Σ inputs − r_x)`
+- **Bar tooltip**: `pat_hover_grid()` renders ■ (U+25A0) spans at 16px, `&nbsp;` spacing, colored F/M/T/B headers, italic state labels. Matches dark-bg tooltip style.
+- **Edge analysis tooltip**: uses `text=` param (not `customdata`) on go.Heatmap — Plotly reads `%{text}` from `text`, not `customdata`. Dark hoverlabel required.
+- **Circuit topology inspector**: below edge analysis heatmap; two selectboxes (n_fwd, n_bwd); shows mini-graphs from `build_all_circuit_images()` cache (dark arrows, 8 per row). Workaround for Plotly stripping `<img>` tags from hover.
+- **Cascade detection in `pat_label()`**: bitwise subset chain check — patterns like {∅,F,F+M,F+M+T+B} display with "→" instead of "+".
 
 ---
 
@@ -89,17 +95,37 @@ Key design decisions:
 |--------|---------|
 | `app.py` | **Primary deliverable** — Streamlit dashboard |
 | `run_circuit_stable.wls` | Mathematica: stable attractors only |
-| `run_circuit_v2.wls` | Mathematica: stable + semistable (3–4× slower) |
+| `run_circuit_v2.wls` | Mathematica: stable + semistable (binary semi/not) |
+| `run_circuit_v3.wls` | **New** — 5-type classification: stable/semi1/semi2/semi3/unstable; single-pass loop; `Cancel[]` not `Simplify[]`; 1000 samples default → `results_v3/` |
+| `run_missing_semi.sh` | Wrapper: reads `missing_semi_jobs.txt`, dispatches v2 for incomplete chunks |
 | `aggregate_v2.py` | Collates chunk CSVs → `_agg.csv` per circuit |
 | `make_interactive_heatmap.py` | Standalone HTML heatmap (legacy) |
 
 ---
 
-## Semistable States
+## Semistable / Ghost-Attractor Runs (2026-06-13)
 
-- Available for ~1,669 circuits from the first run (`*_semi.csv` files in `results_v2/`)
-- **Not included** in the main dashboard (stable attractors only)
-- Targeted follow-up: run `run_circuit_v2.wls` on circuits of interest
+**v2 completion — `circSemi[1-891]%50`** (job 398891, `medium` queue)
+- 891 missing (circuit, chunk) pairs identified from `results_v2/`; list in `missing_semi_jobs.txt`
+- Wrapper: `run_missing_semi.sh` — reads line `$LSB_JOBINDEX` → dispatches v2
+- Logs: `logs_semi/semi_%I.out`
+- Will accelerate overnight once Snakemake fairshare recovers (~1–2 AM)
+
+**v3 pilot — `circV3[1-256]%50`** (job 401364, `short` queue)
+- 5-type classification: stable / semi1 / semi2 / semi3 / unstable
+- 1000 samples per circuit (algebraic, not ODE integration — very fast)
+- Output: `results_v3/circuit_XXX_r0_5_{stable,semi1,semi2,semi3,unstable}.csv`
+- ~174/256 done as of 19:50 on 2026-06-13; rest pending
+
+**Classification definitions (v3):**
+- `stable` — all tangent + invasion eigenvalues ≤ 0 (proper attractor)
+- `semi1/2/3` — tangent evals ≤ 0 but n=1/2/3 diagonal Jacobian entries for absent variables > 0 (ghost/quasi-stable)
+- `unstable` — at least one positive tangent eigenvalue (saddle)
+- Zero state (0000) is always stable (Jacobian diagonal at zero = −r_x < 0)
+
+**Key insight:** steady-state finding is purely algebraic (linear system per sector after
+substituting parameter values — at most 4×4). `Cancel[]` suffices in place of `Simplify[]`
+for the inner-expression factoring. No ODE integration.
 
 ---
 
