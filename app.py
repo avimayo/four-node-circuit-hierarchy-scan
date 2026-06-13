@@ -1187,7 +1187,7 @@ with tab_fwd:
   padding:8px 12px;font-size:12px;font-family:monospace;line-height:1.6;
   position:absolute;z-index:9999;
   bottom:calc(100% + 6px);left:50%;transform:translateX(-50%);
-  white-space:nowrap;pointer-events:none;
+  white-space:nowrap;pointer-events:none;text-align:left;
   transition:opacity 0.12s;box-shadow:0 4px 12px rgba(0,0,0,.5);
 }
 .cir-card:hover .tt{visibility:visible;opacity:1;}
