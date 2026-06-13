@@ -208,9 +208,9 @@ def _circuit_png_b64(bits, edge_sds, size_in=0.42, dpi=120, arrow_color="white",
         if b:
             ax.annotate("", xy=dst, xytext=src,
                         arrowprops=dict(arrowstyle="-|>", color=arrow_color,
-                                        lw=1.3, mutation_scale=10))
+                                        lw=2.2, mutation_scale=16))
     for node, (nx, ny) in _NP_MPL.items():
-        ax.plot(nx, ny, "o", ms=6.0, color=_NC_MPL[node], zorder=5, markeredgewidth=0)
+        ax.plot(nx, ny, "o", ms=18, color=_NC_MPL[node], zorder=5, markeredgewidth=0)
     buf = io.BytesIO()
     fig.savefig(buf, format="png", bbox_inches="tight",
                 transparent=(bg is None), dpi=dpi, pad_inches=0.02)
@@ -856,27 +856,28 @@ def build_forward_figure():
             showlegend=False,
         ))
         # [2/1] Padé rational fit: y ≈ (a0+a1·x+a2·x²)/(1+b1·x)
-        # Linearised as y = a0+a1·x+a2·x² − b1·x·y  → solve via lstsq
+        # Falls back to quadratic when pole -1/b1 lands inside the data x-range.
         _mx, _my = np.array(means.index, float), np.array(means.values, float)
         if len(_mx) >= 3:
             _A = np.column_stack([np.ones_like(_mx), _mx, _mx**2, -_mx * _my])
             _coeffs, *_ = np.linalg.lstsq(_A, _my, rcond=None)
             a0, a1, a2, b1 = _coeffs
             _xd = np.linspace(_mx.min(), _mx.max(), 200)
-            _denom = 1 + b1 * _xd
-            _yd = (a0 + a1 * _xd + a2 * _xd**2) / _denom
-            # Mask near-pole singularities: hide curve where it strays far beyond data range
-            _y_span = max(_my.max() - _my.min(), 1e-6)
-            _yd = np.where(
-                (_yd < _my.min() - 1.5 * _y_span) | (_yd > _my.max() + 1.5 * _y_span),
-                np.nan, _yd
-            )
+            _x_pad = 0.05 * (_mx.max() - _mx.min())
+            _pole_inside = (b1 != 0 and
+                            _mx.min() - _x_pad <= -1.0 / b1 <= _mx.max() + _x_pad)
+            if _pole_inside:
+                # Quadratic fallback — no poles possible
+                _cq, *_ = np.linalg.lstsq(
+                    np.column_stack([np.ones_like(_mx), _mx, _mx**2]), _my, rcond=None)
+                _yd = _cq[0] + _cq[1] * _xd + _cq[2] * _xd**2
+            else:
+                _yd = (a0 + a1 * _xd + a2 * _xd**2) / (1 + b1 * _xd)
             fig.add_trace(go.Scatter(
                 x=_xd, y=_yd,
                 mode="lines",
                 line=dict(color="black", width=1.5, dash="dot"),
                 showlegend=False, hoverinfo="skip",
-                connectgaps=False,
             ))
         fig.add_trace(go.Scatter(
             x=means.index, y=means.values,
