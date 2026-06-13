@@ -208,9 +208,9 @@ def _circuit_png_b64(bits, edge_sds, size_in=0.42, dpi=120, arrow_color="white",
         if b:
             ax.annotate("", xy=dst, xytext=src,
                         arrowprops=dict(arrowstyle="-|>", color=arrow_color,
-                                        lw=2.2, mutation_scale=16))
+                                        lw=3.0, mutation_scale=24))
     for node, (nx, ny) in _NP_MPL.items():
-        ax.plot(nx, ny, "o", ms=18, color=_NC_MPL[node], zorder=5, markeredgewidth=0)
+        ax.plot(nx, ny, "o", ms=32, color=_NC_MPL[node], zorder=5, markeredgewidth=0)
     buf = io.BytesIO()
     fig.savefig(buf, format="png", bbox_inches="tight",
                 transparent=(bg is None), dpi=dpi, pad_inches=0.02)
@@ -306,8 +306,9 @@ def build_tick_images():
 @st.cache_data
 def build_all_circuit_images():
     """All 256 circuit PNG data-URIs (white arrows on dark bg — for topology inspector)."""
+    _CACHE_V = 5  # bump to bust Streamlit cache when render params change
     return {
-        c: _circuit_png_b64(idx_to_vec[c], _ALL_SD, size_in=1.1, dpi=150,
+        c: _circuit_png_b64(idx_to_vec[c], _ALL_SD, size_in=2.0, dpi=120,
                             arrow_color="white", bg="#12122a")
         for c in range(1, 257)
     }
@@ -1163,7 +1164,7 @@ with tab_fwd:
             for j, c in enumerate(_row_cs):
                 _img_bytes = base64.b64decode(_all_cimgs[c].split(",")[1])
                 with _row_cols[j]:
-                    st.image(_img_bytes, caption=f"#{c}", width=120)
+                    st.image(_img_bytes, caption=f"#{c}", width=180)
     else:
         st.caption("No circuits with those edge counts.")
 
