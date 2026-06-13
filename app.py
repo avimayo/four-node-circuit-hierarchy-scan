@@ -963,7 +963,7 @@ with tab_bar:
     _pat_html  = build_bar_legend_html(_bar_top_pats, _bar_colors)
     st.markdown(
         f'<div style="display:flex;justify-content:center;align-items:flex-start;'
-        f'gap:30px;padding:10px 0;">'
+        f'gap:30px;padding:0;margin-top:-20px;">'
         f'<div>{_pat_html}</div>'
         f'<div style="text-align:center;padding-top:8px;flex-shrink:0;">'
         f'<div style="font-size:11px;color:#aaa;margin-bottom:4px;">Node key</div>'
