@@ -307,7 +307,7 @@ def build_tick_images():
 def build_all_circuit_images():
     """All 256 circuit PNG data-URIs (white arrows on dark bg — for topology inspector)."""
     return {
-        c: _circuit_png_b64(idx_to_vec[c], _ALL_SD, size_in=0.7, dpi=130,
+        c: _circuit_png_b64(idx_to_vec[c], _ALL_SD, size_in=1.1, dpi=150,
                             arrow_color="white", bg="#12122a")
         for c in range(1, 257)
     }
@@ -855,12 +855,23 @@ def build_forward_figure():
             hovertemplate=f"{x_col}=%{{x:.2f}}<br>{y_col}=%{{y:.3f}}<extra></extra>",
             showlegend=False,
         ))
-        fig.add_trace(go.Scatter(
-            x=means.index, y=means.values,
-            mode="lines",
-            line=dict(shape="spline", smoothing=1.3, color="black", width=1.5, dash="dot"),
-            showlegend=False, hoverinfo="skip",
-        ))
+        # [2/1] Padé rational fit: y ≈ (a0+a1·x+a2·x²)/(1+b1·x)
+        # Linearised as y = a0+a1·x+a2·x² − b1·x·y  → solve via lstsq
+        _mx, _my = np.array(means.index, float), np.array(means.values, float)
+        if len(_mx) >= 3:
+            _A = np.column_stack([np.ones_like(_mx), _mx, _mx**2, -_mx * _my])
+            _coeffs, *_ = np.linalg.lstsq(_A, _my, rcond=None)
+            a0, a1, a2, b1 = _coeffs
+            _xd = np.linspace(_mx.min(), _mx.max(), 200)
+            _denom = 1 + b1 * _xd
+            _denom = np.where(np.abs(_denom) < 1e-9, 1e-9, _denom)
+            _yd = (a0 + a1 * _xd + a2 * _xd**2) / _denom
+            fig.add_trace(go.Scatter(
+                x=_xd, y=_yd,
+                mode="lines",
+                line=dict(color="black", width=1.5, dash="dot"),
+                showlegend=False, hoverinfo="skip",
+            ))
         fig.add_trace(go.Scatter(
             x=means.index, y=means.values,
             error_y=dict(type="data", array=sems.values, visible=True),
@@ -1145,7 +1156,7 @@ with tab_fwd:
             for j, c in enumerate(_row_cs):
                 _img_bytes = base64.b64decode(_all_cimgs[c].split(",")[1])
                 with _row_cols[j]:
-                    st.image(_img_bytes, caption=f"#{c}", width=72)
+                    st.image(_img_bytes, caption=f"#{c}", width=120)
     else:
         st.caption("No circuits with those edge counts.")
 
