@@ -119,6 +119,7 @@ def pat_icon_html(pat_str, swatch_color, cell=14):
             f'{swatch}</svg>')
 
 def build_bar_legend_html(top_pats, colors):
+    """Returns icons table with active/off key below — no outer wrapper."""
     key_svg = (
         f'<svg width="140" height="18" xmlns="http://www.w3.org/2000/svg">'
         f'<rect x="0" y="1" width="15" height="15" fill="{_COL_ON}" rx="2"/>'
@@ -140,12 +141,11 @@ def build_bar_legend_html(top_pats, colors):
             f'word-wrap:break-word;margin-top:4px;">{lbl}</div></td>'
         )
     return (
-        f'<div style="padding:4px 0;">'
-        f'<div style="margin-bottom:4px;">{key_svg}'
+        f'<table style="border-collapse:collapse;">'
+        f'<tr>' + "".join(items) + '</tr></table>'
+        f'<div style="margin-top:8px;">{key_svg}'
         f'  <span style="font-size:12px;color:inherit;vertical-align:middle;">'
         f'  Columns: F · M · T · B</span></div>'
-        f'<table style="border-collapse:collapse;margin:0 auto;">'
-        f'<tr>' + "".join(items) + '</tr></table></div>'
     )
 
 # ── Mini circuit PNG helpers (heatmap + bar tick labels) ───────────────────────
@@ -959,12 +959,19 @@ with tab_bar:
     )
     _bar_fig, _bar_top_pats, _bar_colors = build_bar_figure()
     st.plotly_chart(_bar_fig, use_container_width=True)
-    _leg_col, _nleg_col = st.columns([7, 1])
-    with _leg_col:
-        st.markdown(build_bar_legend_html(_bar_top_pats, _bar_colors), unsafe_allow_html=True)
-    with _nleg_col:
-        st.caption("Node key")
-        st.image(build_node_legend_bytes(), width=130)
+    _node_b64 = base64.b64encode(build_node_legend_bytes()).decode()
+    _pat_html  = build_bar_legend_html(_bar_top_pats, _bar_colors)
+    st.markdown(
+        f'<div style="display:flex;justify-content:center;align-items:flex-start;'
+        f'gap:30px;padding:10px 0;">'
+        f'<div>{_pat_html}</div>'
+        f'<div style="text-align:center;padding-top:8px;flex-shrink:0;">'
+        f'<div style="font-size:11px;color:#aaa;margin-bottom:4px;">Node key</div>'
+        f'<img src="data:image/png;base64,{_node_b64}" width="130">'
+        f'</div>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
 
 # ── Tab 3: forward-edge analysis ───────────────────────────────────────────────
 with tab_fwd:
