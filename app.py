@@ -1157,18 +1157,24 @@ with tab_fwd:
             f"{len(_ci_circuits)} circuit{'s' if len(_ci_circuits) > 1 else ''} "
             f"with n_fwd={_ci_nf}, n_bwd={_ci_nb}"
         )
-        _all_cimgs = build_all_circuit_images()
-        _HIER_REL  = frozenset({"1000", "1100", "1111"})
+        _all_cimgs   = build_all_circuit_images()
+        _HIER_REL    = frozenset({"1000", "1100", "1111"})
+        _HIER_EXACT_A = frozenset({"0000", "1000", "1100", "1111"})
+        _HIER_EXACT_B = frozenset({"0000", "0011", "1000", "1100", "1111"})
 
         def _insp_tt(c):
             nd   = n_distinct.get(c, 0)
             pats = sorted(pat_freq.get(c, {}).items(), key=lambda x: -x[1])[:3]
-            hier = sum(frac for p, frac in pat_freq.get(c, {}).items()
-                       if _HIER_REL <= frozenset(p.split("|")))
+            hier_rel = sum(frac for p, frac in pat_freq.get(c, {}).items()
+                           if _HIER_REL <= frozenset(p.split("|")))
+            hier_can = sum(frac for p, frac in pat_freq.get(c, {}).items()
+                           if _HIER_REL <= (s := frozenset(p.split("|")))
+                           and (s == _HIER_EXACT_A or s == _HIER_EXACT_B))
             lines = [
                 f"<b>Circuit #{c}</b> &nbsp;·&nbsp; "
                 f"{nd} attractor type{'s' if nd != 1 else ''}",
-                f"Hierarchy (relaxed):&nbsp; {hier:.0%}",
+                f"Hierarchy canonical:&nbsp; {hier_can:.0%}",
+                f"Hierarchy relaxed:&nbsp;&nbsp; {hier_rel:.0%}",
                 "──────────────────────",
             ]
             for i, (p, frac) in enumerate(pats, 1):
