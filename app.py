@@ -144,7 +144,7 @@ def build_bar_legend_html(top_pats, colors):
         f'<div style="margin-bottom:4px;">{key_svg}'
         f'  <span style="font-size:12px;color:inherit;vertical-align:middle;">'
         f'  Columns: F · M · T · B</span></div>'
-        f'<table style="border-collapse:collapse;">'
+        f'<table style="border-collapse:collapse;margin:0 auto;">'
         f'<tr>' + "".join(items) + '</tr></table></div>'
     )
 
@@ -647,7 +647,7 @@ def build_bar_figure():
         height=_BAR_H,
         margin=dict(l=_BAR_ML, r=_BAR_MR, t=_BAR_MT, b=_BAR_MB),
         plot_bgcolor="white",
-        hoverlabel=dict(bgcolor="white", font_size=14),
+        hoverlabel=dict(bgcolor="#1e293b", font=dict(color="white", size=14)),
     )
     return fig, top_pats, colors_used[:len(top_pats)]
 
@@ -941,13 +941,15 @@ with tab_heat:
                     st.session_state["view_key"] = v["key"]
             st.markdown("---")
         st.caption("Hover cells for full breakdown · hover tick icons for row/column averages.")
-        st.markdown("**Node key**")
-        st.image(build_node_legend_bytes(), width=160)
 
     with _map_col:
         view = next(v for v in VIEWS if v["key"] == st.session_state["view_key"])
         st.markdown(f"**{view['label']}** — {view['desc']}")
         st.plotly_chart(build_heatmap_figure(view), use_container_width=False)
+        _, _nkey = st.columns([5, 1])
+        with _nkey:
+            st.caption("Node key")
+            st.image(build_node_legend_bytes(), width=130)
 
 # ── Tab 2: stacked bar ─────────────────────────────────────────────────────────
 with tab_bar:
