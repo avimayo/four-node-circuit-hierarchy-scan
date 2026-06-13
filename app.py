@@ -841,6 +841,12 @@ def build_forward_figure():
         ))
         fig.add_trace(go.Scatter(
             x=means.index, y=means.values,
+            mode="lines",
+            line=dict(shape="spline", smoothing=1.0, color="black", width=1.5, dash="dot"),
+            showlegend=False, hoverinfo="skip",
+        ))
+        fig.add_trace(go.Scatter(
+            x=means.index, y=means.values,
             error_y=dict(type="data", array=sems.values, visible=True),
             mode="markers", marker=dict(color="black", size=9, symbol="diamond"),
             name="mean ± SEM",
