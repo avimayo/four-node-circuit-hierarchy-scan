@@ -74,18 +74,22 @@ def pat_label(pat):
 _NODE_COLORS = {"F": "#4C72B0", "M": "#DD8452", "T": "#55A868", "B": "#C44E52"}
 
 def pat_hover_grid(pat):
-    """Colored-span matrix for Plotly hover (spans render; img/svg do not)."""
-    _ON  = f'<span style="color:#FDD835;font-size:16px;">■</span>'
-    _OFF = f'<span style="color:#00897B;font-size:16px;">■</span>'
-    header = "  ".join(
-        f'<span style="color:{_NODE_COLORS[n]};font-weight:bold;">{n}</span>'
+    """Colored-block matrix matching the bar legend style — for Plotly hover."""
+    _SZ  = "22px"
+    _ON  = f'<span style="color:#FDD835;font-size:{_SZ};line-height:1.15;">█</span>'
+    _OFF = f'<span style="color:#00897B;font-size:{_SZ};line-height:1.15;">█</span>'
+    _SP  = '<span style="font-size:6px;"> </span>'   # thin spacer between cells
+
+    header = _SP.join(
+        f'<span style="color:{_NODE_COLORS[n]};font-weight:bold;font-size:13px;">{n}</span>'
         for n in ["F", "M", "T", "B"]
     )
     states = sorted(pat.split("|"), key=lambda s: s.count("1"))
     rows = [header]
     for s in states:
-        cells = "  ".join(_ON if b == "1" else _OFF for b in s)
-        rows.append(f"{cells}  <i>{STATE_LABELS.get(s, s)}</i>")
+        cells = _SP.join(_ON if b == "1" else _OFF for b in s)
+        label = f'<span style="font-size:12px;"> {STATE_LABELS.get(s, s)}</span>'
+        rows.append(f"{cells}{label}")
     return "<br>".join(rows)
 
 # ── State-pattern icon helpers (bar legend) ────────────────────────────────────
@@ -771,8 +775,8 @@ def build_forward_figure():
     fig_heat = go.Figure(go.Heatmap(
         z=heat, colorscale="YlOrRd", zmin=0, zmax=vmax,
         colorbar=dict(title="Mean # stable<br>states", thickness=14),
-        customdata=_ea_tips,
-        hovertemplate="%{customdata}<extra></extra>",
+        text=_ea_tips.tolist(),
+        hovertemplate="%{text}<extra></extra>",
     ))
     for i in range(6):
         fig_heat.add_shape(type="line", x0=i-0.5, x1=i-0.5, y0=-0.5, y1=4.5,
@@ -787,6 +791,8 @@ def build_forward_figure():
                    scaleanchor="x", scaleratio=1),
         width=560, height=560,
         margin=dict(l=60, r=80, t=50, b=60),
+        hoverlabel=dict(bgcolor="#1e293b", bordercolor="#555",
+                        font=dict(color="white", size=13, family="monospace")),
     )
 
     # Per-circuit hierarchy frequency (relaxed: attractor set contains {F, F+M, all-active})
