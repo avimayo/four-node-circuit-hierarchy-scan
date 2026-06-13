@@ -62,7 +62,14 @@ SEPS  = [0.5, 4.5, 10.5, 14.5]
 TAB10 = px.colors.qualitative.Plotly
 
 def pat_label(pat):
-    return " + ".join(STATE_LABELS.get(s, s) for s in sorted(pat.split("|")))
+    states = sorted(pat.split("|"), key=lambda s: s.count("1"))
+    # Cascade: each state's active bits are a subset of the next (bitwise inclusion)
+    is_cascade = len(states) > 1 and all(
+        all(a <= b for a, b in zip(states[i], states[i + 1]))
+        for i in range(len(states) - 1)
+    )
+    sep = " → " if is_cascade else " + "
+    return sep.join(STATE_LABELS.get(s, s) for s in states)
 
 # ── State-pattern icon helpers (bar legend) ────────────────────────────────────
 # Two-colour scheme: yellow = node ON, teal = node OFF
@@ -165,6 +172,8 @@ _BWD_SD = [
     ((0.20, 0.20), (0.20, 0.80)),   # B→F
     ((0.20, 0.20), (0.80, 0.80)),   # B→M
 ]
+# Interleaved: (F→T, T→F, M→T, T→M, F→B, B→F, M→B, B→M) — matches idx_to_vec bit order
+_ALL_SD = [e for pair in zip(_FWD_SD, _BWD_SD) for e in pair]
 
 def _circuit_png_b64(bits, edge_sds, size_in=0.42, dpi=120, arrow_color="white"):
     fig, ax = plt.subplots(figsize=(size_in, size_in), dpi=dpi)
@@ -385,7 +394,7 @@ def build_hover():
     fns = [
         ("Canonical F→F+M→all (strict)", lambda s: _HIER_CANONICAL <= s and (s == _HIER_EXACT_A or s == _HIER_EXACT_B)),
         ("Contains F→F+M→all",           lambda s: _HIER_CANONICAL <= s),
-        ("∅→F→F+M→F+M+T→all",           lambda s: _HIER_4STEP <= s),
+        ("∅→F→F+M→F+M+T→F+M+T+B",        lambda s: _HIER_4STEP <= s),
         ("Any 1→2→all",                  lambda s: "1111" in s and bool(_ONE_NODE & s) and bool(_TWO_NODE & s)),
         ("Any 1→all",                    lambda s: "1111" in s and bool(_ONE_NODE & s)),
     ]
@@ -485,8 +494,8 @@ VIEWS = [
          desc="Attractor set includes {F, F+M, all} — extra states allowed",
          key="hier_relaxed",  colorscale="YlOrRd", zmin=0, zmax=1,
          ann_fmt=".0%", colorbar_title="Hierarchy<br>frequency"),
-    dict(label="Hierarchy: ∅→F→F+M→F+M+T→all",
-         desc="Attractor set includes {∅, F, F+M, F+M+T, all} — full 5-step cascade",
+    dict(label="Hierarchy: ∅→F→F+M→F+M+T→F+M+T+B",
+         desc="Attractor set includes {∅, F, F+M, F+M+T, F+M+T+B} — full 5-step cascade",
          key="hier_4step",    colorscale="YlOrRd", zmin=0, zmax=1,
          ann_fmt=".0%", colorbar_title="Hierarchy<br>frequency"),
     dict(label="Hierarchy: Any 1-node → 2-node → all",
@@ -590,9 +599,9 @@ def build_heatmap_figure(view):
 
     fig.update_layout(
         annotations=annotations + [nk_label],
-        width=1050, height=920,
+        width=1150, height=920,
         plot_bgcolor="black",
-        margin=dict(l=60, r=190, t=20, b=60),
+        margin=dict(l=60, r=290, t=20, b=60),
         hoverlabel=dict(bgcolor="white", bordercolor="#aaa",
                         font=dict(size=13, family="monospace", color="black")),
     )
@@ -678,6 +687,27 @@ def build_bar_figure():
     )
     return fig, top_pats, colors_used[:len(top_pats)]
 
+@st.cache_data
+def build_edge_analysis_tooltips():
+    """5×5 array of rich tooltip HTML for the edge-analysis heatmap (indexed [n_bwd, n_fwd])."""
+    tips = np.full((5, 5), "", dtype=object)
+    for nb in range(5):
+        for nf in range(5):
+            circuits = sorted(c for c, vec in idx_to_vec.items()
+                              if sum(fwd_bits(vec)) == nf and sum(bwd_bits(vec)) == nb)
+            if not circuits:
+                tips[nb, nf] = f"n_fwd={nf}, n_bwd={nb}<br>No data"
+                continue
+            imgs = "".join(
+                f'<img src="{_circuit_png_b64(idx_to_vec[c], _ALL_SD, size_in=0.42, dpi=80, arrow_color="white")}" width="46" height="46">'
+                for c in circuits
+            )
+            tips[nb, nf] = (
+                f"<b>n_fwd={nf}, n_bwd={nb}</b> — "
+                f"{len(circuits)} circuit{'s' if len(circuits) > 1 else ''}<br>{imgs}"
+            )
+    return tips
+
 # ── Forward-analysis figure ────────────────────────────────────────────────────
 @st.cache_data
 def build_forward_figure():
@@ -706,10 +736,12 @@ def build_forward_figure():
         for nb in range(5) for nf in range(5) if not np.isnan(heat[nb, nf])
     ]
 
+    _ea_tips = build_edge_analysis_tooltips()
     fig_heat = go.Figure(go.Heatmap(
         z=heat, colorscale="YlOrRd", zmin=0, zmax=vmax,
         colorbar=dict(title="Mean # stable<br>states", thickness=14),
-        hovertemplate="n_fwd=%{x}  n_bwd=%{y}<br>mean=%{z:.2f}<extra></extra>",
+        customdata=_ea_tips,
+        hovertemplate="%{customdata}<extra></extra>",
     ))
     for i in range(6):
         fig_heat.add_shape(type="line", x0=i-0.5, x1=i-0.5, y0=-0.5, y1=4.5,
