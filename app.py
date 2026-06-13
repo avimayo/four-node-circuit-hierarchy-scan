@@ -945,11 +945,18 @@ with tab_heat:
     with _map_col:
         view = next(v for v in VIEWS if v["key"] == st.session_state["view_key"])
         st.markdown(f"**{view['label']}** — {view['desc']}")
-        st.plotly_chart(build_heatmap_figure(view), use_container_width=False)
-        _, _nkey = st.columns([5, 1])
-        with _nkey:
-            st.caption("Node key")
-            st.image(build_node_legend_bytes(), width=130)
+        _chart_col, _nkey_col = st.columns([9, 1])
+        with _chart_col:
+            st.plotly_chart(build_heatmap_figure(view), use_container_width=False)
+        with _nkey_col:
+            _node_b64 = base64.b64encode(build_node_legend_bytes()).decode()
+            st.markdown(
+                f'<div style="margin-top:300px;text-align:center;">'
+                f'<div style="font-size:12px;font-weight:bold;margin-bottom:6px;">Node key</div>'
+                f'<img src="data:image/png;base64,{_node_b64}" width="160">'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
 
 # ── Tab 2: stacked bar ─────────────────────────────────────────────────────────
 with tab_bar:
