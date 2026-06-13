@@ -210,7 +210,7 @@ def _circuit_png_b64(bits, edge_sds, size_in=0.42, dpi=120, arrow_color="white",
                         arrowprops=dict(arrowstyle="-|>", color=arrow_color,
                                         lw=3.0, mutation_scale=24))
     for node, (nx, ny) in _NP_MPL.items():
-        ax.plot(nx, ny, "o", ms=32, color=_NC_MPL[node], zorder=5, markeredgewidth=0)
+        ax.plot(nx, ny, "o", ms=16, color=_NC_MPL[node], zorder=5, markeredgewidth=0)
     buf = io.BytesIO()
     fig.savefig(buf, format="png", bbox_inches="tight",
                 transparent=(bg is None), dpi=dpi, pad_inches=0.02)
@@ -306,7 +306,7 @@ def build_tick_images():
 @st.cache_data
 def build_all_circuit_images():
     """All 256 circuit PNG data-URIs (white arrows on dark bg — for topology inspector)."""
-    _CACHE_V = 5  # bump to bust Streamlit cache when render params change
+    _CACHE_V = 6  # bump to bust Streamlit cache when render params change
     return {
         c: _circuit_png_b64(idx_to_vec[c], _ALL_SD, size_in=2.0, dpi=120,
                             arrow_color="white", bg="#12122a")
