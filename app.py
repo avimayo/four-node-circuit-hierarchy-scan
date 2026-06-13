@@ -644,7 +644,7 @@ def build_bar_figure():
         yaxis=dict(title=dict(text="Fraction of samples", font=dict(size=14)),
                    tickfont=dict(size=13), tickvals=[0, 0.25, 0.5, 0.75, 1.0],
                    range=[-0.18, 1]),
-        width=_BAR_W, height=_BAR_H,
+        height=_BAR_H,
         margin=dict(l=_BAR_ML, r=_BAR_MR, t=_BAR_MT, b=_BAR_MB),
         plot_bgcolor="white",
         hoverlabel=dict(bgcolor="white", font_size=14),
@@ -941,14 +941,12 @@ with tab_heat:
                     st.session_state["view_key"] = v["key"]
             st.markdown("---")
         st.caption("Hover cells for full breakdown · hover tick icons for row/column averages.")
+        st.markdown("**Node key**")
+        st.image(build_node_legend_bytes(), width=160)
 
     with _map_col:
         view = next(v for v in VIEWS if v["key"] == st.session_state["view_key"])
-        _title_col, _key_col = st.columns([5, 1])
-        with _title_col:
-            st.markdown(f"**{view['label']}** — {view['desc']}")
-        with _key_col:
-            st.image(build_node_legend_bytes(), width=130)
+        st.markdown(f"**{view['label']}** — {view['desc']}")
         st.plotly_chart(build_heatmap_figure(view), use_container_width=False)
 
 # ── Tab 2: stacked bar ─────────────────────────────────────────────────────────
@@ -958,26 +956,13 @@ with tab_bar:
         "averaged over all 16 forward-edge combinations for that backward-edge combo."
     )
     _bar_fig, _bar_top_pats, _bar_colors = build_bar_figure()
-    # CSS to horizontally center the fixed-width chart
-    st.markdown("""
-<style>
-[data-testid="stPlotlyChart"] > div { margin-left: auto; margin-right: auto; }
-</style>
-""", unsafe_allow_html=True)
-    st.plotly_chart(_bar_fig, use_container_width=False)
-    _node_b64 = base64.b64encode(build_node_legend_bytes()).decode()
-    _pat_html  = build_bar_legend_html(_bar_top_pats, _bar_colors)
-    st.markdown(
-        f'<div style="max-width:{_BAR_W}px;margin:0 auto;display:flex;'
-        f'align-items:flex-start;justify-content:space-between;">'
-        f'{_pat_html}'
-        f'<div style="flex-shrink:0;text-align:center;padding-left:16px;">'
-        f'<div style="font-size:11px;color:#aaa;margin-bottom:4px;">Node key</div>'
-        f'<img src="data:image/png;base64,{_node_b64}" width="130">'
-        f'</div>'
-        f'</div>',
-        unsafe_allow_html=True,
-    )
+    st.plotly_chart(_bar_fig, use_container_width=True)
+    _leg_col, _nleg_col = st.columns([7, 1])
+    with _leg_col:
+        st.markdown(build_bar_legend_html(_bar_top_pats, _bar_colors), unsafe_allow_html=True)
+    with _nleg_col:
+        st.caption("Node key")
+        st.image(build_node_legend_bytes(), width=130)
 
 # ── Tab 3: forward-edge analysis ───────────────────────────────────────────────
 with tab_fwd:
