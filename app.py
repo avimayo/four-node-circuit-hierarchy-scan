@@ -74,22 +74,18 @@ def pat_label(pat):
 _NODE_COLORS = {"F": "#4C72B0", "M": "#DD8452", "T": "#55A868", "B": "#C44E52"}
 
 def pat_hover_grid(pat):
-    """Colored-block matrix matching the bar legend style — for Plotly hover."""
-    _SZ  = "22px"
-    _ON  = f'<span style="color:#FDD835;font-size:{_SZ};line-height:1.15;">█</span>'
-    _OFF = f'<span style="color:#00897B;font-size:{_SZ};line-height:1.15;">█</span>'
-    _SP  = '<span style="font-size:6px;"> </span>'   # thin spacer between cells
-
-    header = _SP.join(
-        f'<span style="color:{_NODE_COLORS[n]};font-weight:bold;font-size:13px;">{n}</span>'
+    """Colored-square rows for Plotly hover — matches Image #33 style."""
+    ON  = '<span style="color:#FDD835;font-size:16px;">■</span>'
+    OFF = '<span style="color:#00897B;font-size:16px;">■</span>'
+    header = "&nbsp;".join(
+        f'<b><span style="color:{_NODE_COLORS[n]};">{n}</span></b>'
         for n in ["F", "M", "T", "B"]
     )
     states = sorted(pat.split("|"), key=lambda s: s.count("1"))
     rows = [header]
     for s in states:
-        cells = _SP.join(_ON if b == "1" else _OFF for b in s)
-        label = f'<span style="font-size:12px;"> {STATE_LABELS.get(s, s)}</span>'
-        rows.append(f"{cells}{label}")
+        blocks = "&nbsp;".join(ON if b == "1" else OFF for b in s)
+        rows.append(f"{blocks}&nbsp;<i>{STATE_LABELS.get(s, s)}</i>")
     return "<br>".join(rows)
 
 # ── State-pattern icon helpers (bar legend) ────────────────────────────────────
@@ -301,6 +297,14 @@ def build_tick_images():
     bwd_imgs      = [_circuit_png_b64(bb, _BWD_SD, arrow_color="white")   for bb in bwd_combos]
     bwd_imgs_dark = [_circuit_png_b64(bb, _BWD_SD, arrow_color="#333333") for bb in bwd_combos]
     return fwd_imgs, bwd_imgs, bwd_imgs_dark
+
+@st.cache_data
+def build_all_circuit_images():
+    """All 256 circuit PNG data-URIs (dark arrows on transparent bg — for light-bg inspector)."""
+    return {
+        c: _circuit_png_b64(idx_to_vec[c], _ALL_SD, size_in=0.7, dpi=130, arrow_color="#333333")
+        for c in range(1, 257)
+    }
 
 # ── Data loading ───────────────────────────────────────────────────────────────
 @st.cache_data
@@ -1087,6 +1091,41 @@ with tab_fwd:
             st.plotly_chart(fig_fwd_hier, use_container_width=False)
         with _r2c2:
             st.plotly_chart(fig_bwd_hier, use_container_width=False)
+
+    st.markdown("---")
+    st.markdown("### Circuit topology inspector")
+    st.caption(
+        "Select edge counts to view mini-diagrams of every matching circuit topology. "
+        "Blue arrows = FM→TB (forward); orange arrows = TB→FM (backward)."
+    )
+    _ci_sel_c1, _ci_sel_c2, _ci_spacer = st.columns([1, 1, 5])
+    with _ci_sel_c1:
+        _ci_nf = st.selectbox("# Forward edges (FM→TB)", [0, 1, 2, 3, 4],
+                              index=0, key="ci_nf")
+    with _ci_sel_c2:
+        _ci_nb = st.selectbox("# Backward edges (TB→FM)", [0, 1, 2, 3, 4],
+                              index=1, key="ci_nb")
+
+    _ci_circuits = sorted(
+        c for c, vec in idx_to_vec.items()
+        if sum(fwd_bits(vec)) == _ci_nf and sum(bwd_bits(vec)) == _ci_nb
+    )
+    if _ci_circuits:
+        st.caption(
+            f"{len(_ci_circuits)} circuit{'s' if len(_ci_circuits) > 1 else ''} "
+            f"with n_fwd={_ci_nf}, n_bwd={_ci_nb}"
+        )
+        _all_cimgs = build_all_circuit_images()
+        _per_row   = 8
+        for _row_start in range(0, len(_ci_circuits), _per_row):
+            _row_cs   = _ci_circuits[_row_start : _row_start + _per_row]
+            _row_cols = st.columns(_per_row)
+            for j, c in enumerate(_row_cs):
+                _img_bytes = base64.b64decode(_all_cimgs[c].split(",")[1])
+                with _row_cols[j]:
+                    st.image(_img_bytes, caption=f"#{c}", width=72)
+    else:
+        st.caption("No circuits with those edge counts.")
 
 # ── Tab 4: take-home message ───────────────────────────────────────────────────
 with tab_takeaway:
