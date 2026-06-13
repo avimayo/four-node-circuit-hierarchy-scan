@@ -208,9 +208,9 @@ def _circuit_png_b64(bits, edge_sds, size_in=0.42, dpi=120, arrow_color="white",
         if b:
             ax.annotate("", xy=dst, xytext=src,
                         arrowprops=dict(arrowstyle="-|>", color=arrow_color,
-                                        lw=0.7, mutation_scale=5))
+                                        lw=1.3, mutation_scale=10))
     for node, (nx, ny) in _NP_MPL.items():
-        ax.plot(nx, ny, "o", ms=3.2, color=_NC_MPL[node], zorder=5, markeredgewidth=0)
+        ax.plot(nx, ny, "o", ms=6.0, color=_NC_MPL[node], zorder=5, markeredgewidth=0)
     buf = io.BytesIO()
     fig.savefig(buf, format="png", bbox_inches="tight",
                 transparent=(bg is None), dpi=dpi, pad_inches=0.02)
@@ -864,13 +864,19 @@ def build_forward_figure():
             a0, a1, a2, b1 = _coeffs
             _xd = np.linspace(_mx.min(), _mx.max(), 200)
             _denom = 1 + b1 * _xd
-            _denom = np.where(np.abs(_denom) < 1e-9, 1e-9, _denom)
             _yd = (a0 + a1 * _xd + a2 * _xd**2) / _denom
+            # Mask near-pole singularities: hide curve where it strays far beyond data range
+            _y_span = max(_my.max() - _my.min(), 1e-6)
+            _yd = np.where(
+                (_yd < _my.min() - 1.5 * _y_span) | (_yd > _my.max() + 1.5 * _y_span),
+                np.nan, _yd
+            )
             fig.add_trace(go.Scatter(
                 x=_xd, y=_yd,
                 mode="lines",
                 line=dict(color="black", width=1.5, dash="dot"),
                 showlegend=False, hoverinfo="skip",
+                connectgaps=False,
             ))
         fig.add_trace(go.Scatter(
             x=means.index, y=means.values,
