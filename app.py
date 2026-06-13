@@ -695,8 +695,8 @@ def build_forward_figure():
         xaxis=dict(tickvals=list(range(5)), title=dict(text="# Forward edges (FM→TB)", font=dict(size=13)), tickfont=dict(size=12)),
         yaxis=dict(tickvals=list(range(5)), title=dict(text="# Backward edges (TB→FM)", font=dict(size=13)), tickfont=dict(size=12),
                    scaleanchor="x", scaleratio=1),
-        width=460, height=460,
-        margin=dict(l=60, r=60, t=50, b=60),
+        width=560, height=560,
+        margin=dict(l=60, r=80, t=50, b=60),
     )
 
     # Per-circuit hierarchy frequency (relaxed: attractor set contains {F, F+M, all-active})
@@ -754,7 +754,7 @@ def build_forward_figure():
                        font=dict(color="black", size=13)),
             xaxis=dict(title=x_title, range=[-0.05, 1.05], **_ax),
             yaxis=yaxis_kw,
-            height=300, width=480,
+            height=320, width=500,
             margin=dict(l=70, r=80, t=55, b=50),
             legend=dict(x=0.02, y=0.98, font=dict(color="black")),
             plot_bgcolor="white", paper_bgcolor="white",
@@ -963,17 +963,19 @@ with tab_bar:
 </style>
 """, unsafe_allow_html=True)
     st.plotly_chart(_bar_fig, use_container_width=False)
+    _node_b64 = base64.b64encode(build_node_legend_bytes()).decode()
+    _pat_html  = build_bar_legend_html(_bar_top_pats, _bar_colors)
     st.markdown(
-        f'<div style="max-width:{_BAR_W}px;margin:0 auto;display:flex;align-items:flex-start;gap:12px;">',
+        f'<div style="max-width:{_BAR_W}px;margin:0 auto;display:flex;'
+        f'align-items:flex-start;justify-content:space-between;">'
+        f'{_pat_html}'
+        f'<div style="flex-shrink:0;text-align:center;padding-left:16px;">'
+        f'<div style="font-size:11px;color:#aaa;margin-bottom:4px;">Node key</div>'
+        f'<img src="data:image/png;base64,{_node_b64}" width="130">'
+        f'</div>'
+        f'</div>',
         unsafe_allow_html=True,
     )
-    _leg_col, _nleg_col = st.columns([6, 1])
-    with _leg_col:
-        st.markdown(build_bar_legend_html(_bar_top_pats, _bar_colors), unsafe_allow_html=True)
-    with _nleg_col:
-        st.caption("Node key")
-        st.image(build_node_legend_bytes(), width=130)
-    st.markdown("</div>", unsafe_allow_html=True)
 
 # ── Tab 3: forward-edge analysis ───────────────────────────────────────────────
 with tab_fwd:
