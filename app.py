@@ -71,6 +71,23 @@ def pat_label(pat):
     sep = " → " if is_cascade else " + "
     return sep.join(STATE_LABELS.get(s, s) for s in states)
 
+_NODE_COLORS = {"F": "#4C72B0", "M": "#DD8452", "T": "#55A868", "B": "#C44E52"}
+
+def pat_hover_grid(pat):
+    """Colored-span matrix for Plotly hover (spans render; img/svg do not)."""
+    _ON  = f'<span style="color:#FDD835;font-size:16px;">■</span>'
+    _OFF = f'<span style="color:#00897B;font-size:16px;">■</span>'
+    header = "  ".join(
+        f'<span style="color:{_NODE_COLORS[n]};font-weight:bold;">{n}</span>'
+        for n in ["F", "M", "T", "B"]
+    )
+    states = sorted(pat.split("|"), key=lambda s: s.count("1"))
+    rows = [header]
+    for s in states:
+        cells = "  ".join(_ON if b == "1" else _OFF for b in s)
+        rows.append(f"{cells}  <i>{STATE_LABELS.get(s, s)}</i>")
+    return "<br>".join(rows)
+
 # ── State-pattern icon helpers (bar legend) ────────────────────────────────────
 # Two-colour scheme: yellow = node ON, teal = node OFF
 _COL_ON  = "#FDD835"   # Material Yellow 600
@@ -645,13 +662,15 @@ def build_bar_figure():
     fig = go.Figure()
     for pi, (pat, col) in enumerate(zip(all_pats, colors_used)):
         label = pat_label(pat) if pat != "other" else "other"
+        grid  = pat_hover_grid(pat) if pat != "other" else "<i>all remaining patterns</i>"
         fig.add_trace(go.Bar(
             name=label, x=list(range(16)), y=bwd_pat_mean[:, pi],
             marker_color=col, showlegend=False,
             customdata=bwd_labels,
             hovertemplate=(
-                f"<b>%{{customdata}}</b><br>"
-                f"{label}: %{{y:.1%}}<extra></extra>"
+                f"<b>%{{y:.1%}}</b>  —  %{{customdata}}<br>"
+                f"─────────────────────<br>"
+                f"{grid}<extra></extra>"
             ),
         ))
 
@@ -690,6 +709,20 @@ def build_bar_figure():
 @st.cache_data
 def build_edge_analysis_tooltips():
     """5×5 array of rich tooltip HTML for the edge-analysis heatmap (indexed [n_bwd, n_fwd])."""
+    _FWD = FWD_ENAMES   # ["F→T","M→T","F→B","M→B"]
+    _BWD = BWD_ENAMES   # ["T→F","T→M","B→F","B→M"]
+
+    def _circuit_text(c):
+        vec = idx_to_vec[c]
+        fwd_active = [e for e, b in zip(_FWD, fwd_bits(vec)) if b]
+        bwd_active = [e for e, b in zip(_BWD, bwd_bits(vec)) if b]
+        fwd_str = ", ".join(f'<span style="color:#6BAED6">{e}</span>'
+                            for e in fwd_active) or "—"
+        bwd_str = ", ".join(f'<span style="color:#FD8D3C">{e}</span>'
+                            for e in bwd_active) or "—"
+        nd  = n_distinct.get(c, 0)
+        return f"  #{c}  fwd: {fwd_str}  bwd: {bwd_str}  ({nd} attractors)"
+
     tips = np.full((5, 5), "", dtype=object)
     for nb in range(5):
         for nf in range(5):
@@ -698,14 +731,12 @@ def build_edge_analysis_tooltips():
             if not circuits:
                 tips[nb, nf] = f"n_fwd={nf}, n_bwd={nb}<br>No data"
                 continue
-            imgs = "".join(
-                f'<img src="{_circuit_png_b64(idx_to_vec[c], _ALL_SD, size_in=0.42, dpi=80, arrow_color="white")}" width="46" height="46">'
-                for c in circuits
+            header = (
+                f"<b>n_fwd={nf}, n_bwd={nb}</b>"
+                f" — {len(circuits)} circuit{'s' if len(circuits) > 1 else ''}"
             )
-            tips[nb, nf] = (
-                f"<b>n_fwd={nf}, n_bwd={nb}</b> — "
-                f"{len(circuits)} circuit{'s' if len(circuits) > 1 else ''}<br>{imgs}"
-            )
+            rows = "<br>".join(_circuit_text(c) for c in circuits)
+            tips[nb, nf] = f"{header}<br>{'─'*34}<br>{rows}"
     return tips
 
 # ── Forward-analysis figure ────────────────────────────────────────────────────
