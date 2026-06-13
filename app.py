@@ -74,18 +74,19 @@ def pat_label(pat):
 _NODE_COLORS = {"F": "#4C72B0", "M": "#DD8452", "T": "#55A868", "B": "#C44E52"}
 
 def pat_hover_grid(pat):
-    """Colored-square rows for Plotly hover — matches Image #33 style."""
-    ON  = '<span style="color:#FDD835;font-size:16px;">■</span>'
-    OFF = '<span style="color:#00897B;font-size:16px;">■</span>'
-    header = "&nbsp;".join(
-        f'<b><span style="color:{_NODE_COLORS[n]};">{n}</span></b>'
+    """Colored-square rows for Plotly hover.
+    Uses <b style="color:..."> — the safest styled tag in Plotly's HTML sanitiser."""
+    ON  = '<b style="color:#FDD835;">■</b>'
+    OFF = '<b style="color:#00897B;">■</b>'
+    header = " ".join(
+        f'<b style="color:{_NODE_COLORS[n]};">{n}</b>'
         for n in ["F", "M", "T", "B"]
     )
     states = sorted(pat.split("|"), key=lambda s: s.count("1"))
     rows = [header]
     for s in states:
-        blocks = "&nbsp;".join(ON if b == "1" else OFF for b in s)
-        rows.append(f"{blocks}&nbsp;<i>{STATE_LABELS.get(s, s)}</i>")
+        blocks = " ".join(ON if b == "1" else OFF for b in s)
+        rows.append(f"{blocks}  <i>{STATE_LABELS.get(s, s)}</i>")
     return "<br>".join(rows)
 
 # ── State-pattern icon helpers (bar legend) ────────────────────────────────────
@@ -192,13 +193,17 @@ _BWD_SD = [
 # Interleaved: (F→T, T→F, M→T, T→M, F→B, B→F, M→B, B→M) — matches idx_to_vec bit order
 _ALL_SD = [e for pair in zip(_FWD_SD, _BWD_SD) for e in pair]
 
-def _circuit_png_b64(bits, edge_sds, size_in=0.42, dpi=120, arrow_color="white"):
+def _circuit_png_b64(bits, edge_sds, size_in=0.42, dpi=120, arrow_color="white", bg=None):
     fig, ax = plt.subplots(figsize=(size_in, size_in), dpi=dpi)
     ax.set_xlim(0, 1); ax.set_ylim(0, 1)
     ax.set_aspect("equal")
     ax.axis("off")
-    fig.patch.set_alpha(0)
-    ax.set_facecolor((1, 1, 1, 0))
+    if bg:
+        fig.patch.set_facecolor(bg)
+        ax.set_facecolor(bg)
+    else:
+        fig.patch.set_alpha(0)
+        ax.set_facecolor((1, 1, 1, 0))
     for b, (src, dst) in zip(bits, edge_sds):
         if b:
             ax.annotate("", xy=dst, xytext=src,
@@ -208,7 +213,7 @@ def _circuit_png_b64(bits, edge_sds, size_in=0.42, dpi=120, arrow_color="white")
         ax.plot(nx, ny, "o", ms=3.2, color=_NC_MPL[node], zorder=5, markeredgewidth=0)
     buf = io.BytesIO()
     fig.savefig(buf, format="png", bbox_inches="tight",
-                transparent=True, dpi=dpi, pad_inches=0.02)
+                transparent=(bg is None), dpi=dpi, pad_inches=0.02)
     plt.close(fig)
     buf.seek(0)
     return "data:image/png;base64," + base64.b64encode(buf.read()).decode()
@@ -300,9 +305,10 @@ def build_tick_images():
 
 @st.cache_data
 def build_all_circuit_images():
-    """All 256 circuit PNG data-URIs (dark arrows on transparent bg — for light-bg inspector)."""
+    """All 256 circuit PNG data-URIs (white arrows on dark bg — for topology inspector)."""
     return {
-        c: _circuit_png_b64(idx_to_vec[c], _ALL_SD, size_in=0.7, dpi=130, arrow_color="#333333")
+        c: _circuit_png_b64(idx_to_vec[c], _ALL_SD, size_in=0.7, dpi=130,
+                            arrow_color="white", bg="#12122a")
         for c in range(1, 257)
     }
 
@@ -710,26 +716,37 @@ def build_bar_figure():
         height=_BAR_H,
         margin=dict(l=_BAR_ML, r=_BAR_MR, t=_BAR_MT, b=_BAR_MB),
         plot_bgcolor="white",
-        hoverlabel=dict(bgcolor="#1e293b", font=dict(color="white", size=14)),
+        hoverlabel=dict(bgcolor="#1e293b", font=dict(color="white", size=14),
+                        align="left"),
     )
     return fig, top_pats, colors_used[:len(top_pats)]
 
 @st.cache_data
 def build_edge_analysis_tooltips():
-    """5×5 array of rich tooltip HTML for the edge-analysis heatmap (indexed [n_bwd, n_fwd])."""
-    _FWD = FWD_ENAMES   # ["F→T","M→T","F→B","M→B"]
-    _BWD = BWD_ENAMES   # ["T→F","T→M","B→F","B→M"]
+    """5×5 array of rich tooltip HTML for the edge-analysis heatmap (indexed [n_bwd, n_fwd]).
+    Each circuit row shows a mini-graph via CSS background-image (data URI) plus edge list.
+    DOMPurify allows data URIs in inline style; if stripped the span is simply invisible."""
+    _FWD = FWD_ENAMES
+    _BWD = BWD_ENAMES
+    # Pre-build small circuit images (white arrows on dark bg, 36×36 px target)
+    _cimgs = {
+        c: _circuit_png_b64(idx_to_vec[c], _ALL_SD, size_in=0.35, dpi=100,
+                            arrow_color="white", bg="#12122a")
+        for c in range(1, 257)
+    }
 
-    def _circuit_text(c):
+    def _circuit_row(c):
         vec = idx_to_vec[c]
         fwd_active = [e for e, b in zip(_FWD, fwd_bits(vec)) if b]
         bwd_active = [e for e, b in zip(_BWD, bwd_bits(vec)) if b]
-        fwd_str = ", ".join(f'<span style="color:#6BAED6">{e}</span>'
-                            for e in fwd_active) or "—"
-        bwd_str = ", ".join(f'<span style="color:#FD8D3C">{e}</span>'
-                            for e in bwd_active) or "—"
+        fwd_str = ", ".join(f'<b style="color:#6BAED6">{e}</b>' for e in fwd_active) or "—"
+        bwd_str = ", ".join(f'<b style="color:#FD8D3C">{e}</b>' for e in bwd_active) or "—"
         nd  = n_distinct.get(c, 0)
-        return f"  #{c}  fwd: {fwd_str}  bwd: {bwd_str}  ({nd} attractors)"
+        img = _cimgs[c]
+        icon = (f'<span style="display:inline-block;width:36px;height:36px;'
+                f'background:url({img}) no-repeat center/contain;'
+                f'vertical-align:middle;margin-right:4px;"></span>')
+        return f"{icon}<b>#{c}</b>  fwd: {fwd_str}  bwd: {bwd_str}  ({nd} attr.)"
 
     tips = np.full((5, 5), "", dtype=object)
     for nb in range(5):
@@ -739,12 +756,10 @@ def build_edge_analysis_tooltips():
             if not circuits:
                 tips[nb, nf] = f"n_fwd={nf}, n_bwd={nb}<br>No data"
                 continue
-            header = (
-                f"<b>n_fwd={nf}, n_bwd={nb}</b>"
-                f" — {len(circuits)} circuit{'s' if len(circuits) > 1 else ''}"
-            )
-            rows = "<br>".join(_circuit_text(c) for c in circuits)
-            tips[nb, nf] = f"{header}<br>{'─'*34}<br>{rows}"
+            header = (f"<b>n_fwd={nf}, n_bwd={nb}</b>"
+                      f" — {len(circuits)} circuit{'s' if len(circuits) > 1 else ''}")
+            rows = "<br>".join(_circuit_row(c) for c in circuits)
+            tips[nb, nf] = f"{header}<br>{'─'*30}<br>{rows}"
     return tips
 
 # ── Forward-analysis figure ────────────────────────────────────────────────────
@@ -793,10 +808,11 @@ def build_forward_figure():
         xaxis=dict(tickvals=list(range(5)), title=dict(text="# Forward edges (FM→TB)", font=dict(size=13)), tickfont=dict(size=12)),
         yaxis=dict(tickvals=list(range(5)), title=dict(text="# Backward edges (TB→FM)", font=dict(size=13)), tickfont=dict(size=12),
                    scaleanchor="x", scaleratio=1),
-        width=560, height=560,
-        margin=dict(l=60, r=80, t=50, b=60),
+        width=660, height=660,
+        margin=dict(l=70, r=90, t=60, b=70),
         hoverlabel=dict(bgcolor="#1e293b", bordercolor="#555",
-                        font=dict(color="white", size=13, family="monospace")),
+                        font=dict(color="white", size=13, family="monospace"),
+                        align="left"),
     )
 
     # Per-circuit hierarchy frequency (relaxed: attractor set contains {F, F+M, all-active})
@@ -842,7 +858,7 @@ def build_forward_figure():
         fig.add_trace(go.Scatter(
             x=means.index, y=means.values,
             mode="lines",
-            line=dict(shape="spline", smoothing=1.0, color="black", width=1.5, dash="dot"),
+            line=dict(shape="spline", smoothing=1.3, color="black", width=1.5, dash="dot"),
             showlegend=False, hoverinfo="skip",
         ))
         fig.add_trace(go.Scatter(
