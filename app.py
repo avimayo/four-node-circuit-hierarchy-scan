@@ -1158,14 +1158,52 @@ with tab_fwd:
             f"with n_fwd={_ci_nf}, n_bwd={_ci_nb}"
         )
         _all_cimgs = build_all_circuit_images()
-        _per_row   = 8
-        for _row_start in range(0, len(_ci_circuits), _per_row):
-            _row_cs   = _ci_circuits[_row_start : _row_start + _per_row]
-            _row_cols = st.columns(_per_row)
-            for j, c in enumerate(_row_cs):
-                _img_bytes = base64.b64decode(_all_cimgs[c].split(",")[1])
-                with _row_cols[j]:
-                    st.image(_img_bytes, caption=f"#{c}", width=180)
+        _HIER_REL  = frozenset({"1000", "1100", "1111"})
+
+        def _insp_tt(c):
+            nd   = n_distinct.get(c, 0)
+            pats = sorted(pat_freq.get(c, {}).items(), key=lambda x: -x[1])[:3]
+            hier = sum(frac for p, frac in pat_freq.get(c, {}).items()
+                       if _HIER_REL <= frozenset(p.split("|")))
+            lines = [
+                f"<b>Circuit #{c}</b> &nbsp;·&nbsp; "
+                f"{nd} attractor type{'s' if nd != 1 else ''}",
+                f"Hierarchy (relaxed):&nbsp; {hier:.0%}",
+                "──────────────────────",
+            ]
+            for i, (p, frac) in enumerate(pats, 1):
+                lines.append(f"{i}.&nbsp; {pat_label(p)} &nbsp; {frac:.0%}")
+            return "<br>".join(lines)
+
+        _insp_css = """
+<style>
+.cir-grid{display:flex;flex-wrap:wrap;gap:12px;}
+.cir-card{position:relative;display:inline-block;text-align:center;}
+.cir-card img{border-radius:6px;display:block;}
+.cir-card .tt{
+  visibility:hidden;opacity:0;
+  background:#1e293b;color:#e2e8f0;
+  border:1px solid #475569;border-radius:6px;
+  padding:8px 12px;font-size:12px;font-family:monospace;line-height:1.6;
+  position:absolute;z-index:9999;
+  bottom:calc(100% + 6px);left:50%;transform:translateX(-50%);
+  white-space:nowrap;pointer-events:none;
+  transition:opacity 0.12s;box-shadow:0 4px 12px rgba(0,0,0,.5);
+}
+.cir-card:hover .tt{visibility:visible;opacity:1;}
+.cir-cap{font-size:11px;color:#888;margin-top:3px;}
+</style>"""
+
+        _cards = "".join(
+            f'<div class="cir-card">'
+            f'<img src="{_all_cimgs[c]}" width="180">'
+            f'<div class="tt">{_insp_tt(c)}</div>'
+            f'<div class="cir-cap">#{c}</div>'
+            f'</div>'
+            for c in _ci_circuits
+        )
+        st.markdown(_insp_css + f'<div class="cir-grid">{_cards}</div>',
+                    unsafe_allow_html=True)
     else:
         st.caption("No circuits with those edge counts.")
 
