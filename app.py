@@ -318,54 +318,63 @@ def build_all_circuit_images():
 
 @st.cache_data
 def _build_atlas_circ_fig(bits_tuple):
-    """Interactive Plotly circuit topology — click an edge marker to toggle it on/off."""
+    """Interactive Plotly circuit topology — click an arrow to toggle it on/off."""
     NP = {"F": (0.20, 0.80), "M": (0.80, 0.80), "T": (0.80, 0.20), "B": (0.20, 0.20)}
     NC = {"F": "#4C72B0", "M": "#DD8452", "T": "#55A868", "B": "#C44E52"}
     # Order matches EDGE_MAP bit order: F→T(0), T→F(1), M→T(2), T→M(3), F→B(4), B→F(5), M→B(6), B→M(7)
     EDGE_DEF = [("F","T"),("T","F"),("M","T"),("T","M"),
                 ("F","B"),("B","F"),("M","B"),("B","M")]
     ENAMES   = ["F→T","T→F","M→T","T→M","F→B","B→F","M→B","B→M"]
-    BG  = "#12122a"
-    SHR = 0.12   # arrow shrink from node centres (data units)
-    T_M = 0.40   # toggle-marker position along edge (fraction from source)
+    BG   = "#12122a"
+    SHR  = 0.12   # arrow shrink from node centres (data units)
+    PERP = 0.05   # perpendicular offset separating antiparallel pairs
+    N_HIT = 9     # invisible hit-target markers spread along each arrow
 
     fig = go.Figure()
 
-    # Visual arrows (non-clickable annotations)
     for i, (src, tgt) in enumerate(EDGE_DEF):
         sx, sy = NP[src]; tx, ty = NP[tgt]
         L  = ((tx-sx)**2 + (ty-sy)**2)**0.5
-        ux, uy = (tx-sx)/L, (ty-sy)/L
+        ux, uy = (tx-sx)/L, (ty-sy)/L      # unit vector along edge
+        px, py = -uy, ux                    # perpendicular (90° CCW)
+        # even index → +offset side, odd (reverse) → −offset side
+        off = PERP if i % 2 == 0 else -PERP
+        active = bool(bits_tuple[i])
+
+        # Offset endpoints so antiparallel arrows don't overlap
+        sx_o, sy_o = sx + off*px, sy + off*py
+        tx_o, ty_o = tx + off*px, ty + off*py
+        # Arrow tail/head after shrinking away from node circles
+        ax_o, ay_o = sx_o + SHR*ux, sy_o + SHR*uy
+        hx_o, hy_o = tx_o - SHR*ux, ty_o - SHR*uy
+
+        # Visual arrow annotation (non-clickable)
         fig.add_annotation(
-            x =tx - SHR*ux, y =ty - SHR*uy,
-            ax=sx + SHR*ux, ay=sy + SHR*uy,
+            x=hx_o, y=hy_o, ax=ax_o, ay=ay_o,
             xref="x", yref="y", axref="x", ayref="y",
             showarrow=True,
             arrowhead=2, arrowsize=0.85,
-            arrowwidth=2.2 if bits_tuple[i] else 0.4,
-            arrowcolor="white" if bits_tuple[i] else "#2e2e3e",
+            arrowwidth=2.5 if active else 0.5,
+            arrowcolor="white" if active else "#2e2e3e",
         )
 
-    # Clickable toggle markers
-    for i, (src, tgt) in enumerate(EDGE_DEF):
-        sx, sy = NP[src]; tx, ty = NP[tgt]
-        active = bool(bits_tuple[i])
-        bx = sx + T_M*(tx-sx); by = sy + T_M*(ty-sy)
+        # Invisible markers spread along the arrow — these are the click targets.
+        # Nearly transparent so nothing is visible, but hover + click still fire.
+        ts = [0.20 + 0.60 * k / (N_HIT - 1) for k in range(N_HIT)]
+        xs = [sx_o + t*(tx_o - sx_o) for t in ts]
+        ys = [sy_o + t*(ty_o - sy_o) for t in ts]
         fig.add_trace(go.Scatter(
-            x=[bx], y=[by],
+            x=xs, y=ys,
             mode="markers",
-            marker=dict(
-                size=13, symbol="circle",
-                color=NC[src] if active else "#1e1e2e",
-                line=dict(width=1.5, color="white" if active else "#555566"),
-                opacity=1.0,
-            ),
-            customdata=[[i]],
+            marker=dict(size=16, symbol="circle",
+                        color="rgba(0,0,0,0.01)", line=dict(width=0)),
+            customdata=[[i]] * N_HIT,
             hovertemplate=(
-                f"{'● ' if active else '○ '}{ENAMES[i]}<br>"
+                f"{'●' if active else '○'} {ENAMES[i]}<br>"
                 f"<i>click to {'remove' if active else 'add'}</i>"
                 "<extra></extra>"
             ),
+            hoverlabel=dict(bgcolor="#1e293b", font_color="white"),
             showlegend=False,
         ))
 
@@ -384,7 +393,7 @@ def _build_atlas_circ_fig(bits_tuple):
         paper_bgcolor=BG, plot_bgcolor=BG,
         xaxis=dict(range=[-0.05, 1.05], visible=False, fixedrange=True),
         yaxis=dict(range=[-0.05, 1.05], visible=False, scaleanchor="x", fixedrange=True),
-        width=210, height=210,
+        width=220, height=220,
         margin=dict(l=4, r=4, t=4, b=4),
         dragmode=False, clickmode="event",
     )
