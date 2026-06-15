@@ -29,15 +29,25 @@ def target_pattern(src, v):
     Given src pattern (FMTB string) and unit eigenvector v (length 4),
     return implied target pattern, or None if no component clears VEC_DOM.
 
-    Absent type i with v[i] >  VEC_DOM  → type i invades (bit turns on)
-    Present type i with v[i] < -VEC_DOM → type i declines (bit turns off)
+    Absent type i with v[i] >  VEC_DOM  → type i invades (bit turns on).
+      Sign matters here: positive = growth direction.
+
+    Present type i with |v[i]| > VEC_DOM → type i is bistable-unstable,
+      generating the lower arm (bit turns off toward 0).
+      numpy.eig returns eigenvectors up to sign; for a bistable saddle the
+      positive eigenvalue's eigenvector can point EITHER toward the stable
+      branch (v > 0) OR toward extinction (v < 0).  Both arms always coexist,
+      so we use abs() to capture the connection regardless of numpy's sign choice.
     """
     bits = list(src)
     changed = False
     for i in range(4):
         if bits[i] == '0' and v[i] > VEC_DOM:
+            # invasion: absent type growing
             bits[i] = '1'; changed = True
-        elif bits[i] == '1' and v[i] < -VEC_DOM:
+        elif bits[i] == '1' and abs(v[i]) > VEC_DOM:
+            # bistable lower arm: present type is dominant in eigenvector
+            # (sign arbitrary from numpy — lower arm always exists)
             bits[i] = '0'; changed = True
     return ''.join(bits) if changed else None
 
