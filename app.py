@@ -1231,6 +1231,46 @@ $\dot{x}=0$ at $x=0$, so the all-inactive state is always a trivial fixed point.
 
 ---
 
+## Phase space structure — Morse theory
+
+The ODE system defines a **gradient-like flow** on the 16-dimensional simplex of
+possible gene-expression states. Morse theory provides the mathematical framework
+for classifying and counting the fixed points (attractors, saddles, repellers) and
+the flow channels connecting them.
+
+Every steady state is characterised by the **number of positive real eigenvalues** of
+its Jacobian, which we call $n$:
+
+| $n$ | Stability class | Geometric meaning |
+|-----|-----------------|-------------------|
+| 0 | **Stable attractor** | All perturbations decay — the cell population rests here |
+| 1 | **Saddle (codim-3)** | One unstable direction; 3-dimensional stable manifold |
+| 2 | **Saddle (codim-2)** | Two unstable directions; 2-dimensional stable manifold |
+| 3 | **Saddle (codim-1)** | Three unstable directions; 1-dimensional stable manifold |
+| 4 | **Repeller** | All perturbations grow — only reached by fine-tuning |
+
+The **Morse inequalities** impose hard constraints on how many states of each type
+can coexist. For a compact manifold, the alternating sum
+$C_0 - C_1 + C_2 - C_3 + C_4 = \chi$ (Euler characteristic) must equal a
+topological constant. In practice this means:
+
+- **Multiple stable attractors require an equal or larger number of saddles to
+  separate their basins.** Two attractors must be separated by at least one
+  codim-1 saddle; *k* attractors need at least *k*−1 saddles forming a
+  heteroclinic network.
+- **Saddle-node bifurcations are the dominant route to new attractors** — a pair
+  (stable + codim-1 saddle) is born together as a parameter crosses a threshold,
+  as seen in the dominant phase-type transitions across our 256 circuits.
+
+The **heteroclinic network** — the web of gradient-flow trajectories connecting
+saddles to attractors — is visible in the **🧭 Phase Atlas** tab, where each panel
+shows the 16 gene-expression states arranged as a 4-bit hypercube and coloured by
+stability class. Solid arrows indicate the inferred direction of heteroclinic flow
+(from less-stable to more-stable nodes); dashed arrows indicate putative
+transitions between saddle states of the same codimension.
+
+---
+
 ## How the data were collected
 
 Simulations ran on a **high-performance computing cluster** using
@@ -1457,6 +1497,17 @@ with tab_atlas:
     else:
         _atlas_version = int(_atlas_df["_v"].iloc[0]) if "_v" in _atlas_df.columns else 1
 
+        # ── Process pending edge toggle BEFORE any widget renders ─────────────
+        # (Streamlit forbids setting a widget's session_state key after it renders)
+        if "_atlas_toggle_edge" in st.session_state:
+            _te   = st.session_state.pop("_atlas_toggle_edge")
+            _tc   = st.session_state.get("atlas_circ", 114)
+            _tbits = list(idx_to_vec.get(_tc, (0,)*8))
+            _tbits[_te] ^= 1
+            _tnc  = vec_to_idx.get(tuple(_tbits))
+            if _tnc is not None:
+                st.session_state["atlas_circ"] = _tnc
+
         # ── Circuit selector ──────────────────────────────────────────────────
         _a_col1, _a_col2 = st.columns([1, 3])
 
@@ -1498,16 +1549,12 @@ with tab_atlas:
                 use_container_width=False,
                 config={"displayModeBar": False, "scrollZoom": False},
             )
-            # Handle edge-toggle click → update dropdown and rerun
+            # Handle edge-toggle click: store pending toggle, rerun to apply before widget
             if _circ_event and _circ_event.selection.points:
                 for _pt in _circ_event.selection.points:
                     _cd = _pt.get("customdata")
                     if _cd is not None:
-                        _new_bits = list(_circ_bits)
-                        _new_bits[int(_cd[0])] ^= 1
-                        _nc = vec_to_idx.get(tuple(_new_bits))
-                        if _nc is not None:
-                            st.session_state["atlas_circ"] = _nc
+                        st.session_state["_atlas_toggle_edge"] = int(_cd[0])
                         st.rerun()
                     break
 
