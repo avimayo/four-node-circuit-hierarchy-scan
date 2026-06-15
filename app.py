@@ -1462,6 +1462,15 @@ with tab_atlas:
     else:
         _atlas_version = int(_atlas_df["_v"].iloc[0]) if "_v" in _atlas_df.columns else 1
 
+        # ── Handle bookmark link clicks (?bmark=X in URL) ────────────────────
+        if "bmark" in st.query_params:
+            try:
+                st.session_state["_atlas_jump_circ"] = int(st.query_params["bmark"])
+            except (ValueError, TypeError):
+                pass
+            del st.query_params["bmark"]
+            st.rerun()
+
         # ── Apply any pending circuit jump BEFORE widgets render ──────────────
         if "_atlas_jump_circ" in st.session_state:
             st.session_state["atlas_circ"] = st.session_state.pop("_atlas_jump_circ")
@@ -1591,33 +1600,37 @@ with tab_atlas:
                 plt.close(_fig)
 
         with _a_bmarks:
-            st.markdown("**Bookmarks**")
+            st.caption("Bookmarks — click to load")
             _BOOKMARKS = [
-                (114, "All bwd\n~72%"),
-                (27,  "T→F+B→F\n~99%"),
+                (114, "All bwd · ~72%"),
+                (27,  "T→F+B→F · ~99%"),
                 (8,   "T→F"),
-                (2,   "B→M"),
+                (2,   "B→M · ~20%"),
                 (6,   "T→M"),
                 (1,   "No edges"),
             ]
             _bmark_circs_avail = set(_atlas_df["circuit_idx"].values)
+            _bmark_parts = []
             for _bc, _blabel in _BOOKMARKS:
                 if _bc not in _bmark_circs_avail:
                     continue
-                st.image(
-                    _circuit_png_b64(idx_to_vec.get(_bc, (0,)*8), _ALL_SD,
-                                     size_in=1.0, dpi=100,
-                                     arrow_color="white", bg="#12122a"),
-                    width=95,
+                _bimg = _circuit_png_b64(
+                    idx_to_vec.get(_bc, (0,)*8), _ALL_SD,
+                    size_in=1.0, dpi=100, arrow_color="white", bg="#12122a",
                 )
-                if st.button(
-                    f"#{_bc}  {_blabel.split(chr(10))[0]}",
-                    key=f"bmark_{_bc}",
-                    use_container_width=True,
-                    type="secondary" if _bc != _sel_circ else "primary",
-                ):
-                    st.session_state["_atlas_jump_circ"] = _bc
-                    st.rerun()
+                _active  = (_bc == _sel_circ)
+                _border  = "2px solid #4C72B0" if _active else "1px solid #2e2e3e"
+                _lblcol  = "#8ab4f8" if _active else "#888"
+                _bmark_parts.append(
+                    f'<a href="?bmark={_bc}" style="display:block;text-decoration:none;'
+                    f'margin-bottom:10px;">'
+                    f'<img src="{_bimg}" width="95" style="border-radius:6px;'
+                    f'border:{_border};display:block;cursor:pointer;">'
+                    f'<div style="font-size:10px;color:{_lblcol};text-align:center;'
+                    f'margin-top:2px;">#{_bc} {_blabel}</div>'
+                    f'</a>'
+                )
+            st.markdown("".join(_bmark_parts), unsafe_allow_html=True)
 
 # ── Tab 5: take-home message ───────────────────────────────────────────────────
 with tab_takeaway:
