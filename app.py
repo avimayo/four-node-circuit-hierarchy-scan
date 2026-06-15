@@ -423,6 +423,7 @@ def _m_parse(s):
     return set(s.split("|")) if s and s != "none" else set()
 
 def _m_classify(stable, semi1, semi2, semi3, unstable):
+    """Primary class per pattern — most-stable wins (used for arrow logic)."""
     cls = {}
     for p in _m_parse(stable):   cls[p] = "stable"
     for p in _m_parse(semi1):
@@ -434,6 +435,18 @@ def _m_classify(stable, semi1, semi2, semi3, unstable):
     for p in _m_parse(unstable):
         if p not in cls:          cls[p] = "unstable"
     return cls
+
+def _m_classify_all(stable, semi1, semi2, semi3, unstable):
+    """All classes per pattern (a pattern can appear in multiple — e.g. stable + unstable
+    when both branches of a bistable sector are found in the same phase type)."""
+    from collections import defaultdict
+    acc = defaultdict(list)
+    for p in _m_parse(stable):   acc[p].append("stable")
+    for p in _m_parse(semi1):    acc[p].append("semi1")
+    for p in _m_parse(semi2):    acc[p].append("semi2")
+    for p in _m_parse(semi3):    acc[p].append("semi3")
+    for p in _m_parse(unstable): acc[p].append("unstable")
+    return dict(acc)
 
 _M_RANK = {"stable": 0, "semi1": 1, "semi2": 2, "semi3": 3, "unstable": 4}
 
@@ -447,12 +460,23 @@ _M_NODE = {
 }
 _M_SHRINK = {"stable": 15, "semi1": 12, "semi2": 10, "semi3": 8, "unstable": 6, "absent": 5}
 
+# Hollow outer ring drawn when a pattern has coexisting fixed points of different classes.
+# Color encodes the SECONDARY (less stable) class; drawn behind the primary filled node.
+_M_RING = {
+    "stable":   dict(facecolor="none", edgecolor="#2ecc71", linewidths=2.5),
+    "semi1":    dict(facecolor="none", edgecolor="#f1c40f", linewidths=2.2),
+    "semi2":    dict(facecolor="none", edgecolor="#e67e22", linewidths=2.0),
+    "semi3":    dict(facecolor="none", edgecolor="#e74c3c", linewidths=1.8),
+    "unstable": dict(facecolor="none", edgecolor="#7f8c8d", linewidths=1.8),
+}
+
 def draw_morse_figure(title, stable_str, semi1_str, semi2_str, semi3_str,
                       unstable_str, freq_pct=None, figsize=(5.5, 5.0)):
     fig, ax = plt.subplots(figsize=figsize)
     fig.patch.set_facecolor("#fafafa")
     ax.set_facecolor("#fafafa")
     cls_dict  = _m_classify(stable_str, semi1_str, semi2_str, semi3_str, unstable_str)
+    cls_all   = _m_classify_all(stable_str, semi1_str, semi2_str, semi3_str, unstable_str)
     all_semis = _m_parse(semi1_str) | _m_parse(semi2_str) | _m_parse(semi3_str)
 
     for a, b in combinations(_M_PATS, 2):
@@ -532,15 +556,26 @@ def draw_morse_figure(title, stable_str, semi1_str, semi2_str, semi3_str,
 
     for pat in _M_PATS:
         x, y = _M_POS[pat]
-        cls  = cls_dict.get(pat, "absent")
-        ax.scatter(x, y, **_M_NODE[cls].copy())
+        all_cls  = cls_all.get(pat, ["absent"])
+        primary  = min(all_cls, key=lambda c: _M_RANK.get(c, 5))  # most stable
+        secondary = [c for c in all_cls if c != primary]
+        # Outer hollow ring for each coexisting fixed point of a different class.
+        # Shows the second branch of a bistable sector (e.g. unstable separatrix
+        # coexisting with a stable attractor at the same pattern position).
+        for sec in secondary:
+            ring_s = int(_M_NODE[primary]["s"] * 1.85)
+            rng = _M_RING[sec].copy()
+            rng["s"] = ring_s
+            rng["zorder"] = 4.5
+            ax.scatter(x, y, **rng)
+        ax.scatter(x, y, **_M_NODE[primary].copy())
         lbl = _M_LABELS[pat]
-        if cls in ("stable", "semi1", "semi2", "semi3"):
+        if primary in ("stable", "semi1", "semi2", "semi3"):
             ax.text(x, y, lbl, ha="center", va="center",
-                    fontsize=7 if cls == "stable" else 6,
+                    fontsize=7 if primary == "stable" else 6,
                     fontweight="normal", color="black", zorder=6)
         else:
-            col = "#555555" if cls == "unstable" else "#aaaaaa"
+            col = "#555555" if primary == "unstable" else "#aaaaaa"
             ax.text(x, y + 0.18, lbl, ha="center", va="bottom",
                     fontsize=5, color=col, zorder=6)
 
@@ -1668,9 +1703,9 @@ with tab_atlas:
                 ("#ecf0f1", "Not detected"),
             ]
             _arrow_items = [
-                ("#333333", "solid",  "Heteroclinic flow"),
-                ("#777777", "dashed", "Semi↔semi (putative)"),
-                ("#8e44ad", "dotted", "Bistable separatrix (F/T)"),
+                ("#333333", "Heteroclinic flow"),
+                ("#777777", "Semi↔semi (putative)"),
+                ("#8e44ad", "Bistable separatrix (F/T)"),
             ]
             st.markdown(
                 "".join(
@@ -1684,8 +1719,13 @@ with tab_atlas:
                 "".join(
                     f'<span style="font-size:13px;color:{c};">→</span>'
                     f'<span style="font-size:10px;color:#555;margin-left:3px;">{l}</span><br>'
-                    for c, _, l in _arrow_items
-                ),
+                    for c, l in _arrow_items
+                ) +
+                "<br><span style='font-size:10px;color:#555;font-style:italic'>Node rings</span><br>"
+                "<span style='font-size:10px;color:#555;'>Outer ring = coexisting fixed point<br>"
+                "of a different stability class<br>"
+                "(e.g. stable + unstable branch<br>"
+                "of a bistable sector)</span>",
                 unsafe_allow_html=True,
             )
             if _atlas_version == 1:
@@ -1715,31 +1755,31 @@ with tab_atlas:
             _BOOKMARKS = (
                 (114, "All bwd ~72%"),
                 (27,  "T→F+B→F ~99%"),
-                (8,   "T→F"),
+                (8,   "T→F only"),
                 (2,   "B→M ~20%"),
-                (6,   "T→M"),
+                (6,   "T→M only"),
                 (1,   "No edges"),
             )
             _bmark_circs_avail = set(_atlas_df["circuit_idx"].values)
-            _bmark_filtered = tuple(
-                (bc, lbl) for bc, lbl in _BOOKMARKS if bc in _bmark_circs_avail
-            )
-            _bmark_event = st.plotly_chart(
-                _build_bookmarks_fig(_bmark_filtered, _sel_circ),
-                on_select="rerun",
-                key="atlas_bookmarks",
-                use_container_width=False,
-                config={"displayModeBar": False, "scrollZoom": False},
-            )
-            if _bmark_event and _bmark_event.selection.points:
-                for _pt in _bmark_event.selection.points:
-                    _cd = _pt.get("customdata")
-                    if _cd is not None:
-                        _clicked = int(_cd[0])
-                        if _clicked != _sel_circ:   # Plotly keeps selection across reruns;
-                            st.session_state["_atlas_jump_circ"] = _clicked  # only jump when
-                            st.rerun()              # the circuit actually changes
-                    break
+            for _bc, _lbl in _BOOKMARKS:
+                if _bc not in _bmark_circs_avail:
+                    continue
+                _is_active = (_bc == _sel_circ)
+                _bc_bits   = tuple(idx_to_vec.get(_bc, (0,)*8))
+                st.image(
+                    _circuit_png_b64(_bc_bits, _ALL_SD, size_in=0.55, dpi=90,
+                                     arrow_color="white",
+                                     bg="#1a2a4a" if _is_active else "#12122a"),
+                    width=90,
+                )
+                if st.button(
+                    f"#{_bc} · {_lbl}",
+                    key=f"bmark_btn_{_bc}",
+                    type="primary" if _is_active else "secondary",
+                    use_container_width=True,
+                ):
+                    st.session_state["_atlas_jump_circ"] = _bc
+                    st.rerun()
 
 # ── Tab 5: take-home message ───────────────────────────────────────────────────
 with tab_takeaway:
