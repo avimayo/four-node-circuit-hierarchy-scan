@@ -334,6 +334,68 @@ def build_all_circuit_images():
         for c in range(1, 257)
     }
 
+@st.cache_data
+def _build_bookmarks_fig(bookmark_circuits, sel_circ):
+    """Single stacked Plotly figure for all bookmarks — click fires on_select, no page reload."""
+    ITEM_H = 100   # px per bookmark slot
+    W      = 108
+    N      = len(bookmark_circuits)
+
+    fig = go.Figure()
+
+    for i, (bc, blabel) in enumerate(bookmark_circuits):
+        img_b64  = _circuit_png_b64(idx_to_vec.get(bc, (0,)*8), _ALL_SD,
+                                     size_in=1.0, dpi=100,
+                                     arrow_color="white", bg="#12122a")
+        active   = (bc == sel_circ)
+        y_top    = 1.0 - i / N
+        y_bot    = 1.0 - (i + 1) / N
+        y_mid    = (y_top + y_bot) / 2
+        pad      = 0.04 / N            # small gap between items
+
+        fig.add_layout_image(dict(
+            source=img_b64,
+            x=0.05, y=y_top - pad,
+            xref="paper", yref="paper",
+            sizex=0.90, sizey=(1/N) * 0.88,
+            xanchor="left", yanchor="top",
+            layer="below",
+        ))
+        if active:
+            fig.add_shape(type="rect",
+                x0=0.01, y0=y_bot + pad, x1=0.99, y1=y_top - pad,
+                xref="paper", yref="paper",
+                line=dict(color="#4C72B0", width=2),
+                fillcolor="rgba(0,0,0,0)")
+        fig.add_annotation(
+            x=0.5, y=y_bot + pad * 0.5,
+            xref="paper", yref="paper",
+            text=f"#{bc}",
+            showarrow=False,
+            font=dict(color="#8ab4f8" if active else "#777", size=9),
+            xanchor="center", yanchor="bottom",
+        )
+        # Invisible click target
+        fig.add_trace(go.Scatter(
+            x=[0.5], y=[y_mid],
+            mode="markers",
+            marker=dict(size=72, color="rgba(0,0,0,0.01)", line=dict(width=0)),
+            customdata=[[bc]],
+            hovertemplate=f"#{bc} — {blabel}<extra></extra>",
+            hoverlabel=dict(bgcolor="#1e293b", font_color="white"),
+            showlegend=False,
+        ))
+
+    fig.update_layout(
+        paper_bgcolor="#12122a", plot_bgcolor="#12122a",
+        xaxis=dict(range=[0, 1], visible=False, fixedrange=True),
+        yaxis=dict(range=[0, 1], visible=False, fixedrange=True),
+        width=W, height=N * ITEM_H,
+        margin=dict(l=2, r=2, t=4, b=4),
+        dragmode=False, clickmode="event",
+    )
+    return fig
+
 # ── Morse complex drawing (Phase Portrait Atlas tab) ──────────────────────────
 _M_PATS   = [f"{i:04b}" for i in range(16)]
 _M_LABELS = {
@@ -497,8 +559,10 @@ def load_phenotype_table():
         ))
     return pd.DataFrame(records)
 
+_ATLAS_CACHE_V = 2   # bump when atlas files change to bust Streamlit Cloud cache
+
 @st.cache_data
-def load_phase_atlas():
+def load_phase_atlas(_v=_ATLAS_CACHE_V):
     """Load phase atlas v2 (semi1/2/3 split) if available, else fall back to v1."""
     p2 = BASE / "phase_atlas_v2.csv"
     p1 = BASE / "phase_atlas.csv"
@@ -516,7 +580,7 @@ def load_phase_atlas():
     return pd.DataFrame()
 
 @st.cache_data
-def load_circuit_summary_atlas():
+def load_circuit_summary_atlas(_v=_ATLAS_CACHE_V):
     p2 = BASE / "circuit_summary_v2.csv"
     if p2.exists() and p2.stat().st_size > 100:
         return pd.read_csv(p2)
@@ -1462,15 +1526,6 @@ with tab_atlas:
     else:
         _atlas_version = int(_atlas_df["_v"].iloc[0]) if "_v" in _atlas_df.columns else 1
 
-        # ── Handle bookmark link clicks (?bmark=X in URL) ────────────────────
-        if "bmark" in st.query_params:
-            try:
-                st.session_state["_atlas_jump_circ"] = int(st.query_params["bmark"])
-            except (ValueError, TypeError):
-                pass
-            del st.query_params["bmark"]
-            st.rerun()
-
         # ── Apply any pending circuit jump BEFORE widgets render ──────────────
         if "_atlas_jump_circ" in st.session_state:
             st.session_state["atlas_circ"] = st.session_state.pop("_atlas_jump_circ")
@@ -1600,37 +1655,33 @@ with tab_atlas:
                 plt.close(_fig)
 
         with _a_bmarks:
-            st.caption("Bookmarks — click to load")
-            _BOOKMARKS = [
-                (114, "All bwd · ~72%"),
-                (27,  "T→F+B→F · ~99%"),
+            st.caption("Bookmarks")
+            _BOOKMARKS = (
+                (114, "All bwd ~72%"),
+                (27,  "T→F+B→F ~99%"),
                 (8,   "T→F"),
-                (2,   "B→M · ~20%"),
+                (2,   "B→M ~20%"),
                 (6,   "T→M"),
                 (1,   "No edges"),
-            ]
+            )
             _bmark_circs_avail = set(_atlas_df["circuit_idx"].values)
-            _bmark_parts = []
-            for _bc, _blabel in _BOOKMARKS:
-                if _bc not in _bmark_circs_avail:
-                    continue
-                _bimg = _circuit_png_b64(
-                    idx_to_vec.get(_bc, (0,)*8), _ALL_SD,
-                    size_in=1.0, dpi=100, arrow_color="white", bg="#12122a",
-                )
-                _active  = (_bc == _sel_circ)
-                _border  = "2px solid #4C72B0" if _active else "1px solid #2e2e3e"
-                _lblcol  = "#8ab4f8" if _active else "#888"
-                _bmark_parts.append(
-                    f'<a href="?bmark={_bc}" style="display:block;text-decoration:none;'
-                    f'margin-bottom:10px;">'
-                    f'<img src="{_bimg}" width="95" style="border-radius:6px;'
-                    f'border:{_border};display:block;cursor:pointer;">'
-                    f'<div style="font-size:10px;color:{_lblcol};text-align:center;'
-                    f'margin-top:2px;">#{_bc} {_blabel}</div>'
-                    f'</a>'
-                )
-            st.markdown("".join(_bmark_parts), unsafe_allow_html=True)
+            _bmark_filtered = tuple(
+                (bc, lbl) for bc, lbl in _BOOKMARKS if bc in _bmark_circs_avail
+            )
+            _bmark_event = st.plotly_chart(
+                _build_bookmarks_fig(_bmark_filtered, _sel_circ),
+                on_select="rerun",
+                key="atlas_bookmarks",
+                use_container_width=False,
+                config={"displayModeBar": False, "scrollZoom": False},
+            )
+            if _bmark_event and _bmark_event.selection.points:
+                for _pt in _bmark_event.selection.points:
+                    _cd = _pt.get("customdata")
+                    if _cd is not None:
+                        st.session_state["_atlas_jump_circ"] = int(_cd[0])
+                        st.rerun()
+                    break
 
 # ── Tab 5: take-home message ───────────────────────────────────────────────────
 with tab_takeaway:
