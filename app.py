@@ -38,6 +38,7 @@ BWD_ENAMES_ASCII = ["T->F", "T->M", "B->F", "B->M"]
 
 all_vecs   = sorted(product([0, 1], repeat=8), key=sum)
 idx_to_vec = {i + 1: v for i, v in enumerate(all_vecs)}
+vec_to_idx = {v: k for k, v in idx_to_vec.items()}
 fwd_combos = sorted(product([0, 1], repeat=4), key=sum)
 bwd_combos = sorted(product([0, 1], repeat=4), key=sum)
 ALL_STATES = [format(i, "04b") for i in range(16)]
@@ -314,6 +315,80 @@ def build_all_circuit_images():
                             arrow_color="white", bg="#12122a")
         for c in range(1, 257)
     }
+
+@st.cache_data
+def _build_atlas_circ_fig(bits_tuple):
+    """Interactive Plotly circuit topology — click an edge marker to toggle it on/off."""
+    NP = {"F": (0.20, 0.80), "M": (0.80, 0.80), "T": (0.80, 0.20), "B": (0.20, 0.20)}
+    NC = {"F": "#4C72B0", "M": "#DD8452", "T": "#55A868", "B": "#C44E52"}
+    # Order matches EDGE_MAP: T→F, F→T, T→M, M→T, B→F, F→B, B→M, M→B
+    EDGE_DEF = [("T","F"),("F","T"),("T","M"),("M","T"),
+                ("B","F"),("F","B"),("B","M"),("M","B")]
+    ENAMES   = ["T→F","F→T","T→M","M→T","B→F","F→B","B→M","M→B"]
+    BG  = "#12122a"
+    SHR = 0.12   # arrow shrink from node centres (data units)
+    T_M = 0.40   # toggle-marker position along edge (fraction from source)
+
+    fig = go.Figure()
+
+    # Visual arrows (non-clickable annotations)
+    for i, (src, tgt) in enumerate(EDGE_DEF):
+        sx, sy = NP[src]; tx, ty = NP[tgt]
+        L  = ((tx-sx)**2 + (ty-sy)**2)**0.5
+        ux, uy = (tx-sx)/L, (ty-sy)/L
+        fig.add_annotation(
+            x =tx - SHR*ux, y =ty - SHR*uy,
+            ax=sx + SHR*ux, ay=sy + SHR*uy,
+            xref="x", yref="y", axref="x", ayref="y",
+            showarrow=True,
+            arrowhead=2, arrowsize=0.85,
+            arrowwidth=2.2 if bits_tuple[i] else 0.4,
+            arrowcolor="white" if bits_tuple[i] else "#2e2e3e",
+        )
+
+    # Clickable toggle markers
+    for i, (src, tgt) in enumerate(EDGE_DEF):
+        sx, sy = NP[src]; tx, ty = NP[tgt]
+        active = bool(bits_tuple[i])
+        bx = sx + T_M*(tx-sx); by = sy + T_M*(ty-sy)
+        fig.add_trace(go.Scatter(
+            x=[bx], y=[by],
+            mode="markers",
+            marker=dict(
+                size=13, symbol="circle",
+                color=NC[src] if active else "#1e1e2e",
+                line=dict(width=1.5, color="white" if active else "#555566"),
+                opacity=1.0,
+            ),
+            customdata=[[i]],
+            hovertemplate=(
+                f"{'● ' if active else '○ '}{ENAMES[i]}<br>"
+                f"<i>click to {'remove' if active else 'add'}</i>"
+                "<extra></extra>"
+            ),
+            showlegend=False,
+        ))
+
+    # Node circles (top layer, non-interactive)
+    for node, (x, y) in NP.items():
+        fig.add_trace(go.Scatter(
+            x=[x], y=[y], mode="markers+text",
+            marker=dict(size=32, color=NC[node], line=dict(width=0)),
+            text=[node],
+            textfont=dict(color="white", size=13),
+            textposition="middle center",
+            hoverinfo="skip", showlegend=False,
+        ))
+
+    fig.update_layout(
+        paper_bgcolor=BG, plot_bgcolor=BG,
+        xaxis=dict(range=[-0.05, 1.05], visible=False, fixedrange=True),
+        yaxis=dict(range=[-0.05, 1.05], visible=False, scaleanchor="x", fixedrange=True),
+        width=210, height=210,
+        margin=dict(l=4, r=4, t=4, b=4),
+        dragmode=False, clickmode="event",
+    )
+    return fig
 
 # ── Morse complex drawing (Phase Portrait Atlas tab) ──────────────────────────
 _M_PATS   = [f"{i:04b}" for i in range(16)]
@@ -1413,15 +1488,28 @@ with tab_atlas:
                 key="atlas_circ",
             )
 
-            # Circuit topology icon
-            _circ_img = _circuit_png_b64(
-                idx_to_vec.get(_sel_circ, (0,)*8), _ALL_SD,
-                size_in=2.2, dpi=110, arrow_color="white", bg="#12122a",
+            # Interactive circuit topology — click an edge to toggle it on/off
+            st.caption("Click an edge ● to add/remove it")
+            _circ_bits = tuple(idx_to_vec.get(_sel_circ, (0,)*8))
+            _circ_event = st.plotly_chart(
+                _build_atlas_circ_fig(_circ_bits),
+                on_select="rerun",
+                key="atlas_circuit_icon",
+                use_container_width=False,
+                config={"displayModeBar": False, "scrollZoom": False},
             )
-            st.markdown(
-                f'<img src="{_circ_img}" style="border-radius:8px;margin:6px 0;">',
-                unsafe_allow_html=True,
-            )
+            # Handle edge-toggle click → update dropdown and rerun
+            if _circ_event and _circ_event.selection.points:
+                for _pt in _circ_event.selection.points:
+                    _cd = _pt.get("customdata")
+                    if _cd is not None:
+                        _new_bits = list(_circ_bits)
+                        _new_bits[int(_cd[0])] ^= 1
+                        _nc = vec_to_idx.get(tuple(_new_bits))
+                        if _nc is not None:
+                            st.session_state["atlas_circ"] = _nc
+                        st.rerun()
+                    break
 
             # Circuit summary metrics
             if not _summary_df.empty:
