@@ -7,7 +7,7 @@ Read `/Users/Avimayo/CLAUDE.md` first for shared cluster constraints.
 ## Project Goal
 
 Enumerate phenotype attractors (stable steady states) for all 256 four-node
-gene-circuit topologies (F=Fibroblasts, M=Macrophages, T=T-cells, B=B-cells; 8 possible directed edges).
+cell-type circuit topologies (F=Fibroblasts, M=Macrophages, T=T-cells, B=B-cells are **cell types, NOT genes**; 8 possible directed edges between cell types).
 Parameter space: edge weights sampled from `RandomReal[{0,5}, {nSamples, nActive}]`.
 
 Central biological question: which circuit topologies support a **hierarchical activation

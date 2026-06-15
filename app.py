@@ -482,6 +482,11 @@ def draw_morse_figure(title, stable_str, semi1_str, semi2_str, semi3_str,
         if ra > rb:   src, tgt = a, b
         elif rb > ra: src, tgt = b, a
         else: continue
+        # Semi nodes are stable within their sector — they can only gain cell types
+        # (invasion), not lose them. Skip downward arrows for semi sources.
+        if cls_dict.get(src) in ("semi1", "semi2", "semi3"):
+            if tgt.count("1") <= src.count("1"):
+                continue
         xs, ys = _M_POS[src]; xt, yt = _M_POS[tgt]
         ax.annotate("", xy=(xt, yt), xytext=(xs, ys),
                     arrowprops=dict(arrowstyle="-|>", color="#333333",
