@@ -471,7 +471,7 @@ _M_RING = {
 }
 
 def draw_morse_figure(title, stable_str, semi1_str, semi2_str, semi3_str,
-                      unstable_str, freq_pct=None, figsize=(5.5, 5.0)):
+                      unstable_str, freq_pct=None, figsize=(5.5, 5.0), circ_idx=None):
     fig, ax = plt.subplots(figsize=figsize)
     fig.patch.set_facecolor("#fafafa")
     ax.set_facecolor("#fafafa")
@@ -484,75 +484,83 @@ def draw_morse_figure(title, stable_str, semi1_str, semi2_str, semi3_str,
             xa, ya = _M_POS[a]; xb, yb = _M_POS[b]
             ax.plot([xa, xb], [ya, yb], color="#ececec", lw=0.3, zorder=0)
 
-    for a, b in combinations(all_semis, 2):
-        if sum(x != y for x, y in zip(a, b)) != 1: continue
-        pa, pb = a.count("1"), b.count("1")
-        pairs = [(a, b)] if pa < pb else ([(b, a)] if pb < pa else [(a, b), (b, a)])
-        for src, tgt in pairs:
-            xs, ys = _M_POS[src]; xt, yt = _M_POS[tgt]
-            sc = cls_dict.get(src, "absent"); tc = cls_dict.get(tgt, "absent")
-            ax.annotate("", xy=(xt, yt), xytext=(xs, ys),
-                        arrowprops=dict(arrowstyle="-|>", color="#777777",
-                                        lw=1.0, mutation_scale=9,
-                                        linestyle="dashed",
-                                        shrinkA=_M_SHRINK.get(sc, 5),
-                                        shrinkB=_M_SHRINK.get(tc, 5)), zorder=1)
-
-    # ── Bistable separatrix connections (purple dotted) ───────────────────────
-    # F (pattern bit 0) and T (bit 2) are intrinsically bistable: their
-    # self-coupling exceeds their decay rate, giving two fixed-point branches
-    # in those sectors (stable upper branch + unstable lower separatrix).
-    # When two detected patterns differ by exactly one bistable cell type and
-    # the target is a genuine attractor, the separatrix mediates a transition
-    # that the rank-based arrow logic misses (stable→stable pairs share rank 0;
-    # semi→stable downward arrows were blocked by the sector-stability fix).
-    _BISTABLE_BITS = {0, 2}   # 0 = F, 2 = T in "FMTB" bit string
-    _all_det  = set(cls_dict.keys())
-    _attractor = {p for p, c in cls_dict.items()
-                  if c in ("stable", "semi1", "semi2", "semi3")}
-    for _a, _b in combinations(_M_PATS, 2):
-        if sum(x != y for x, y in zip(_a, _b)) != 1: continue
-        if _a not in _all_det or _b not in _all_det: continue
-        _bit = next(i for i in range(4) if _a[i] != _b[i])
-        if _bit not in _BISTABLE_BITS: continue
-        _src = _a if _a[_bit] == "1" else _b   # pattern WITH the bistable cell type
-        _tgt = _b if _src == _a else _a
-        if _tgt not in _attractor: continue     # target must be a genuine attractor
-        _cs = cls_dict.get(_src, "absent"); _ct = cls_dict.get(_tgt, "absent")
-        _rs = _M_RANK.get(_cs, -1);             _rt = _M_RANK.get(_ct, -1)
-        # Skip when the rank-based arrow already covers this direction
-        # (rs > rt AND source is not a semi node emitting a downward arrow)
-        _already = (_rs > _rt and not (
-            _cs in ("semi1", "semi2", "semi3") and _src.count("1") > _tgt.count("1")
-        ))
-        if _already: continue
-        _xs, _ys = _M_POS[_src]; _xt, _yt = _M_POS[_tgt]
-        ax.annotate("", xy=(_xt, _yt), xytext=(_xs, _ys),
-                    arrowprops=dict(arrowstyle="-|>", color="#8e44ad",
-                                    lw=0.9, mutation_scale=8,
-                                    linestyle="dotted",
-                                    shrinkA=_M_SHRINK.get(_cs, 5),
-                                    shrinkB=_M_SHRINK.get(_ct, 5)), zorder=1.5)
-
-    for a, b in combinations(_M_PATS, 2):
-        if sum(x != y for x, y in zip(a, b)) != 1: continue
-        ca, cb = cls_dict.get(a), cls_dict.get(b)
-        if ca is None or cb is None: continue
-        ra, rb = _M_RANK.get(ca, 3), _M_RANK.get(cb, 3)
-        if ra > rb:   src, tgt = a, b
-        elif rb > ra: src, tgt = b, a
-        else: continue
-        # Semi nodes are stable within their sector — they can only gain cell types
-        # (invasion), not lose them. Skip downward arrows for semi sources.
-        if cls_dict.get(src) in ("semi1", "semi2", "semi3"):
-            if tgt.count("1") <= src.count("1"):
+    # ── Arrows: eigenvector-derived (if available) or heuristic fallback ─────────
+    _hetero = _HETERO_EDGES.get(circ_idx) if circ_idx is not None else None
+    if _hetero is not None and len(_hetero) > 0:
+        # Eigenvector-derived edges — draw all edges with confidence > 0.4
+        for _, _er in _hetero[_hetero["confidence"] > 0.4].iterrows():
+            _src, _tgt = _er["src"], _er["tgt"]
+            if _src not in _M_POS or _tgt not in _M_POS:
                 continue
-        xs, ys = _M_POS[src]; xt, yt = _M_POS[tgt]
-        ax.annotate("", xy=(xt, yt), xytext=(xs, ys),
-                    arrowprops=dict(arrowstyle="-|>", color="#333333",
-                                    lw=1.4, mutation_scale=12,
-                                    shrinkA=_M_SHRINK.get(ca, 3),
-                                    shrinkB=_M_SHRINK.get(cb, 5)), zorder=2)
+            _cs = cls_dict.get(_src, "absent")
+            _ct = cls_dict.get(_tgt, "absent")
+            _conf = float(_er["confidence"])
+            _alpha = min(1.0, 0.4 + _conf * 0.6)
+            if _er["dominant_type"] == "bistable":
+                _col, _ls, _lw, _ms, _zo = "#8e44ad", "dotted", 0.8 + _conf * 0.4, 8, 1.5
+            else:
+                _col, _ls, _lw, _ms, _zo = "#333333", "solid", 0.8 + _conf * 0.8, 12, 2
+            _xs, _ys = _M_POS[_src]; _xt, _yt = _M_POS[_tgt]
+            ax.annotate("", xy=(_xt, _yt), xytext=(_xs, _ys),
+                        arrowprops=dict(arrowstyle="-|>", color=_col, lw=_lw,
+                                        mutation_scale=_ms, linestyle=_ls, alpha=_alpha,
+                                        shrinkA=_M_SHRINK.get(_cs, 5),
+                                        shrinkB=_M_SHRINK.get(_ct, 5)), zorder=_zo)
+    else:
+        # Heuristic fallback ────────────────────────────────────────────────────
+        for a, b in combinations(all_semis, 2):
+            if sum(x != y for x, y in zip(a, b)) != 1: continue
+            pa, pb = a.count("1"), b.count("1")
+            pairs = [(a, b)] if pa < pb else ([(b, a)] if pb < pa else [(a, b), (b, a)])
+            for src, tgt in pairs:
+                xs, ys = _M_POS[src]; xt, yt = _M_POS[tgt]
+                sc = cls_dict.get(src, "absent"); tc = cls_dict.get(tgt, "absent")
+                ax.annotate("", xy=(xt, yt), xytext=(xs, ys),
+                            arrowprops=dict(arrowstyle="-|>", color="#777777",
+                                            lw=1.0, mutation_scale=9, linestyle="dashed",
+                                            shrinkA=_M_SHRINK.get(sc, 5),
+                                            shrinkB=_M_SHRINK.get(tc, 5)), zorder=1)
+        _BISTABLE_BITS = {0, 2}
+        _all_det  = set(cls_dict.keys())
+        _attractor = {p for p, c in cls_dict.items()
+                      if c in ("stable", "semi1", "semi2", "semi3")}
+        for _a, _b in combinations(_M_PATS, 2):
+            if sum(x != y for x, y in zip(_a, _b)) != 1: continue
+            if _a not in _all_det or _b not in _all_det: continue
+            _bit = next(i for i in range(4) if _a[i] != _b[i])
+            if _bit not in _BISTABLE_BITS: continue
+            _src = _a if _a[_bit] == "1" else _b
+            _tgt = _b if _src == _a else _a
+            if _tgt not in _attractor: continue
+            _cs = cls_dict.get(_src, "absent"); _ct = cls_dict.get(_tgt, "absent")
+            _rs = _M_RANK.get(_cs, -1); _rt = _M_RANK.get(_ct, -1)
+            _already = (_rs > _rt and not (
+                _cs in ("semi1", "semi2", "semi3") and _src.count("1") > _tgt.count("1")
+            ))
+            if _already: continue
+            _xs, _ys = _M_POS[_src]; _xt, _yt = _M_POS[_tgt]
+            ax.annotate("", xy=(_xt, _yt), xytext=(_xs, _ys),
+                        arrowprops=dict(arrowstyle="-|>", color="#8e44ad",
+                                        lw=0.9, mutation_scale=8, linestyle="dotted",
+                                        shrinkA=_M_SHRINK.get(_cs, 5),
+                                        shrinkB=_M_SHRINK.get(_ct, 5)), zorder=1.5)
+        for a, b in combinations(_M_PATS, 2):
+            if sum(x != y for x, y in zip(a, b)) != 1: continue
+            ca, cb = cls_dict.get(a), cls_dict.get(b)
+            if ca is None or cb is None: continue
+            ra, rb = _M_RANK.get(ca, 3), _M_RANK.get(cb, 3)
+            if ra > rb:   src, tgt = a, b
+            elif rb > ra: src, tgt = b, a
+            else: continue
+            if cls_dict.get(src) in ("semi1", "semi2", "semi3"):
+                if tgt.count("1") <= src.count("1"):
+                    continue
+            xs, ys = _M_POS[src]; xt, yt = _M_POS[tgt]
+            ax.annotate("", xy=(xt, yt), xytext=(xs, ys),
+                        arrowprops=dict(arrowstyle="-|>", color="#333333",
+                                        lw=1.4, mutation_scale=12,
+                                        shrinkA=_M_SHRINK.get(ca, 3),
+                                        shrinkB=_M_SHRINK.get(cb, 5)), zorder=2)
 
     for pat in _M_PATS:
         x, y = _M_POS[pat]
@@ -594,6 +602,19 @@ def draw_morse_figure(title, stable_str, semi1_str, semi2_str, semi3_str,
     return fig
 
 # ── Data loading ───────────────────────────────────────────────────────────────
+@st.cache_data
+def load_heteroclinic_edges():
+    p = BASE / "heteroclinic_edges.csv"
+    if not p.exists() or p.stat().st_size == 0:
+        return {}
+    df = pd.read_csv(p, dtype={"src": str, "tgt": str})
+    df["src"] = df["src"].str.zfill(4)
+    df["tgt"] = df["tgt"].str.zfill(4)
+    # index by circuit_idx for fast lookup
+    return {circ: grp for circ, grp in df.groupby("circuit_idx")}
+
+_HETERO_EDGES = load_heteroclinic_edges()
+
 @st.cache_data
 def load_attractor_data():
     pat_freq   = defaultdict(lambda: defaultdict(float))
@@ -1746,6 +1767,7 @@ with tab_atlas:
                     str(_r.get("unstable_pat","none")),
                     freq_pct=float(_r["freq_pct"]),
                     figsize=(7, 6),
+                    circ_idx=_sel_circ,
                 )
                 st.pyplot(_fig, use_container_width=False)
                 plt.close(_fig)
