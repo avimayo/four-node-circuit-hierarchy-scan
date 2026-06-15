@@ -321,10 +321,10 @@ def _build_atlas_circ_fig(bits_tuple):
     """Interactive Plotly circuit topology — click an edge marker to toggle it on/off."""
     NP = {"F": (0.20, 0.80), "M": (0.80, 0.80), "T": (0.80, 0.20), "B": (0.20, 0.20)}
     NC = {"F": "#4C72B0", "M": "#DD8452", "T": "#55A868", "B": "#C44E52"}
-    # Order matches EDGE_MAP: T→F, F→T, T→M, M→T, B→F, F→B, B→M, M→B
-    EDGE_DEF = [("T","F"),("F","T"),("T","M"),("M","T"),
-                ("B","F"),("F","B"),("B","M"),("M","B")]
-    ENAMES   = ["T→F","F→T","T→M","M→T","B→F","F→B","B→M","M→B"]
+    # Order matches EDGE_MAP bit order: F→T(0), T→F(1), M→T(2), T→M(3), F→B(4), B→F(5), M→B(6), B→M(7)
+    EDGE_DEF = [("F","T"),("T","F"),("M","T"),("T","M"),
+                ("F","B"),("B","F"),("M","B"),("B","M")]
+    ENAMES   = ["F→T","T→F","M→T","T→M","F→B","B→F","M→B","B→M"]
     BG  = "#12122a"
     SHR = 0.12   # arrow shrink from node centres (data units)
     T_M = 0.40   # toggle-marker position along edge (fraction from source)
@@ -1250,17 +1250,34 @@ its Jacobian, which we call $n$:
 | 4 | **Repeller** | All perturbations grow — only reached by fine-tuning |
 
 The **Morse inequalities** impose hard constraints on how many states of each type
-can coexist. For a compact manifold, the alternating sum
-$C_0 - C_1 + C_2 - C_3 + C_4 = \chi$ (Euler characteristic) must equal a
-topological constant. In practice this means:
+can coexist. For a space with Euler characteristic $\chi$, the alternating sum
 
-- **Multiple stable attractors require an equal or larger number of saddles to
-  separate their basins.** Two attractors must be separated by at least one
-  codim-1 saddle; *k* attractors need at least *k*−1 saddles forming a
-  heteroclinic network.
+$$C_0 - C_1 + C_2 - C_3 + C_4 = \chi$$
+
+must hold exactly.
+
+**What is $\chi$ for this system?** Gene expressions are non-negative, so the
+natural state space is the positive orthant $\mathbb{R}^4_{\geq 0}$. This space
+is **contractible** — it can be continuously deformed to a point — which means
+its Euler characteristic is $\chi = 1$. The governing constraint is therefore:
+
+$$C_0 - C_1 + C_2 - C_3 + C_4 = 1$$
+
+This is a hard, parameter-independent identity. No matter how the interaction
+strengths are tuned, the signed count of fixed points must always equal 1. In
+particular:
+
+- **A circuit with a single stable attractor and no saddles** satisfies the
+  identity trivially: $1 - 0 + 0 - 0 + 0 = 1$.
+- **Every new stable attractor must be accompanied by at least one odd-codimension
+  saddle.** Two attractors require at least one codim-1 saddle (semi1):
+  $2 - 1 = 1$ ✓. Three attractors require either two codim-1 saddles
+  ($3 - 2 = 1$ ✓) or one codim-1 and one codim-3 saddle ($3 - 1 + \ldots = 1$).
 - **Saddle-node bifurcations are the dominant route to new attractors** — a pair
   (stable + codim-1 saddle) is born together as a parameter crosses a threshold,
-  as seen in the dominant phase-type transitions across our 256 circuits.
+  preserving $\chi = 1$ at each step.
+- **The all-zeros state** ($\emptyset$) is always a fixed point (the multiplicative
+  form guarantees $\dot{x}=0$ at $x=0$), so $C_0 \geq 1$ always.
 
 The **heteroclinic network** — the web of gradient-flow trajectories connecting
 saddles to attractors — is visible in the **🧭 Phase Atlas** tab, where each panel
