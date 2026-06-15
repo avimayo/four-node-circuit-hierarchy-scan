@@ -377,7 +377,7 @@ def draw_morse_figure(title, stable_str, semi1_str, semi2_str, semi3_str,
     for a, b in combinations(_M_PATS, 2):
         if sum(x != y for x, y in zip(a, b)) == 1:
             xa, ya = _M_POS[a]; xb, yb = _M_POS[b]
-            ax.plot([xa, xb], [ya, yb], color="#cccccc", lw=0.7, zorder=0)
+            ax.plot([xa, xb], [ya, yb], color="#ececec", lw=0.3, zorder=0)
 
     for a, b in combinations(all_semis, 2):
         if sum(x != y for x, y in zip(a, b)) != 1: continue
@@ -387,8 +387,9 @@ def draw_morse_figure(title, stable_str, semi1_str, semi2_str, semi3_str,
             xs, ys = _M_POS[src]; xt, yt = _M_POS[tgt]
             sc = cls_dict.get(src, "absent"); tc = cls_dict.get(tgt, "absent")
             ax.annotate("", xy=(xt, yt), xytext=(xs, ys),
-                        arrowprops=dict(arrowstyle="-|>", color="#999999",
-                                        lw=0.7, mutation_scale=8,
+                        arrowprops=dict(arrowstyle="-|>", color="#777777",
+                                        lw=1.0, mutation_scale=9,
+                                        linestyle="dashed",
                                         shrinkA=_M_SHRINK.get(sc, 5),
                                         shrinkB=_M_SHRINK.get(tc, 5)), zorder=1)
 
@@ -1410,6 +1411,16 @@ with tab_atlas:
                 _sorted_circs,
                 format_func=_circ_label,
                 key="atlas_circ",
+            )
+
+            # Circuit topology icon
+            _circ_img = _circuit_png_b64(
+                idx_to_vec.get(_sel_circ, (0,)*8), _ALL_SD,
+                size_in=2.2, dpi=110, arrow_color="white", bg="#12122a",
+            )
+            st.markdown(
+                f'<img src="{_circ_img}" style="border-radius:8px;margin:6px 0;">',
+                unsafe_allow_html=True,
             )
 
             # Circuit summary metrics
