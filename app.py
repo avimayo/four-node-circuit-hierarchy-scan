@@ -43,6 +43,24 @@ fwd_combos = sorted(product([0, 1], repeat=4), key=sum)
 bwd_combos = sorted(product([0, 1], repeat=4), key=sum)
 ALL_STATES = [format(i, "04b") for i in range(16)]
 
+# Edge-text parsing — supports "F→T" and "F->T" spellings
+_EDGE_NAMES_ORDERED = ["F→T","T→F","M→T","T→M","F→B","B→F","M→B","B→M"]
+_EDGE_TO_BIT = {e: i for i, e in enumerate(_EDGE_NAMES_ORDERED)}
+_EDGE_TO_BIT.update({e.replace("→","->"): i for i, e in enumerate(_EDGE_NAMES_ORDERED)})
+
+def _parse_edge_text(text):
+    """Parse '{F→T, T→F}' or 'F->T,T->F' → circuit index, or None on error."""
+    text = text.strip().strip("{}").strip()
+    if not text:
+        return None
+    bits = [0] * 8
+    for part in text.split(","):
+        part = part.strip()
+        if part not in _EDGE_TO_BIT:
+            return None
+        bits[_EDGE_TO_BIT[part]] = 1
+    return vec_to_idx.get(tuple(bits))
+
 def fwd_bits(vec): return (vec[0], vec[2], vec[4], vec[6])
 def bwd_bits(vec): return (vec[1], vec[3], vec[5], vec[7])
 
@@ -315,107 +333,6 @@ def build_all_circuit_images():
                             arrow_color="white", bg="#12122a")
         for c in range(1, 257)
     }
-
-@st.cache_data
-def _build_atlas_circ_fig(bits_tuple):
-    """Interactive Plotly circuit topology — click an arrow to toggle it on/off."""
-    NP = {"F": (0.20, 0.80), "M": (0.80, 0.80), "T": (0.80, 0.20), "B": (0.20, 0.20)}
-    NC = {"F": "#4C72B0", "M": "#DD8452", "T": "#55A868", "B": "#C44E52"}
-    # Order matches EDGE_MAP bit order: F→T(0), T→F(1), M→T(2), T→M(3), F→B(4), B→F(5), M→B(6), B→M(7)
-    EDGE_DEF = [("F","T"),("T","F"),("M","T"),("T","M"),
-                ("F","B"),("B","F"),("M","B"),("B","M")]
-    ENAMES   = ["F→T","T→F","M→T","T→M","F→B","B→F","M→B","B→M"]
-    BG    = "#12122a"
-    SHR   = 0.12   # shrink from node centre (data units)
-    CURVE = 0.18   # Bézier control-point perpendicular offset (bow depth)
-    N_BEZ = 50     # curve resolution (points)
-    N_HIT = 11     # invisible click-target markers per arrow
-    TIP   = 0.03   # length of arrowhead annotation (data units)
-
-    def _bez(p0, p1, c, n):
-        """Quadratic Bézier from p0 to p1 with control point c."""
-        ts = [k/(n-1) for k in range(n)]
-        xs = [(1-t)**2*p0[0] + 2*(1-t)*t*c[0] + t**2*p1[0] for t in ts]
-        ys = [(1-t)**2*p0[1] + 2*(1-t)*t*c[1] + t**2*p1[1] for t in ts]
-        return xs, ys
-
-    fig = go.Figure()
-
-    for i, (src, tgt) in enumerate(EDGE_DEF):
-        sx, sy = NP[src]; tx, ty = NP[tgt]
-        L  = ((tx-sx)**2 + (ty-sy)**2)**0.5
-        ux, uy = (tx-sx)/L, (ty-sy)/L   # unit along edge
-        px, py = -uy, ux                  # perpendicular 90° CCW
-        off    = CURVE if i % 2 == 0 else -CURVE
-        active = bool(bits_tuple[i])
-        color  = "white" if active else "#2e2e3e"
-
-        tail = (sx + SHR*ux, sy + SHR*uy)
-        head = (tx - SHR*ux, ty - SHR*uy)
-        mid  = ((tail[0]+head[0])/2, (tail[1]+head[1])/2)
-        ctrl = (mid[0] + off*px, mid[1] + off*py)
-
-        bx, by = _bez(tail, head, ctrl, N_BEZ)
-
-        # Visual curved line
-        fig.add_trace(go.Scatter(
-            x=bx, y=by, mode="lines",
-            line=dict(color=color, width=2.2 if active else 0.5),
-            hoverinfo="skip", showlegend=False,
-        ))
-
-        # Arrowhead: tiny annotation aligned to Bézier tangent at the head
-        # Tangent at t=1 of quadratic Bézier points from ctrl → head
-        tang_x = head[0] - ctrl[0]; tang_y = head[1] - ctrl[1]
-        tang_L = (tang_x**2 + tang_y**2)**0.5
-        tang_x /= tang_L; tang_y /= tang_L
-        fig.add_annotation(
-            x=head[0], y=head[1],
-            ax=head[0] - TIP*tang_x, ay=head[1] - TIP*tang_y,
-            xref="x", yref="y", axref="x", ayref="y",
-            showarrow=True, arrowhead=2, arrowsize=1.0,
-            arrowwidth=2.2 if active else 0.5,
-            arrowcolor=color,
-        )
-
-        # Invisible click-target markers distributed along the curve
-        idxs  = [int(2 + k*(N_BEZ-4)/(N_HIT-1)) for k in range(N_HIT)]
-        hit_x = [bx[j] for j in idxs]
-        hit_y = [by[j] for j in idxs]
-        fig.add_trace(go.Scatter(
-            x=hit_x, y=hit_y, mode="markers",
-            marker=dict(size=18, symbol="circle",
-                        color="rgba(0,0,0,0.01)", line=dict(width=0)),
-            customdata=[[i]] * N_HIT,
-            hovertemplate=(
-                f"{'●' if active else '○'} {ENAMES[i]}<br>"
-                f"<i>click to {'remove' if active else 'add'}</i>"
-                "<extra></extra>"
-            ),
-            hoverlabel=dict(bgcolor="#1e293b", font_color="white"),
-            showlegend=False,
-        ))
-
-    # Node circles (top layer, non-interactive)
-    for node, (x, y) in NP.items():
-        fig.add_trace(go.Scatter(
-            x=[x], y=[y], mode="markers+text",
-            marker=dict(size=34, color=NC[node], line=dict(width=0)),
-            text=[node],
-            textfont=dict(color="white", size=13),
-            textposition="middle center",
-            hoverinfo="skip", showlegend=False,
-        ))
-
-    fig.update_layout(
-        paper_bgcolor=BG, plot_bgcolor=BG,
-        xaxis=dict(range=[-0.05, 1.05], visible=False, fixedrange=True),
-        yaxis=dict(range=[-0.05, 1.05], visible=False, scaleanchor="x", fixedrange=True),
-        width=320, height=320,
-        margin=dict(l=8, r=8, t=8, b=8),
-        dragmode=False, clickmode="event",
-    )
-    return fig
 
 # ── Morse complex drawing (Phase Portrait Atlas tab) ──────────────────────────
 _M_PATS   = [f"{i:04b}" for i in range(16)]
@@ -1545,21 +1462,14 @@ with tab_atlas:
     else:
         _atlas_version = int(_atlas_df["_v"].iloc[0]) if "_v" in _atlas_df.columns else 1
 
-        # ── Process pending edge toggle BEFORE any widget renders ─────────────
-        # (Streamlit forbids setting a widget's session_state key after it renders)
-        if "_atlas_toggle_edge" in st.session_state:
-            _te   = st.session_state.pop("_atlas_toggle_edge")
-            _tc   = st.session_state.get("atlas_circ", 114)
-            _tbits = list(idx_to_vec.get(_tc, (0,)*8))
-            _tbits[_te] ^= 1
-            _tnc  = vec_to_idx.get(tuple(_tbits))
-            if _tnc is not None:
-                st.session_state["atlas_circ"] = _tnc
+        # ── Apply any pending circuit jump BEFORE widgets render ──────────────
+        if "_atlas_jump_circ" in st.session_state:
+            st.session_state["atlas_circ"] = st.session_state.pop("_atlas_jump_circ")
 
-        # ── Circuit selector ──────────────────────────────────────────────────
-        _a_col1, _a_col2 = st.columns([1, 3])
+        # ── Three-column layout: controls | Morse plot | bookmarks ────────────
+        _a_ctrl, _a_morse, _a_bmarks = st.columns([1.1, 2.5, 0.75])
 
-        with _a_col1:
+        with _a_ctrl:
             # Sort circuits by canonical hierarchy frequency (descending)
             if not _summary_df.empty and "canonical_hier_freq_pct" in _summary_df.columns:
                 _sorted_circs = (
@@ -1587,30 +1497,38 @@ with tab_atlas:
                 key="atlas_circ",
             )
 
-            # Interactive circuit topology — click an arrow to toggle it on/off
-            st.caption("Click an arrow to add / remove it")
-            _circ_bits = tuple(idx_to_vec.get(_sel_circ, (0,)*8))
-            _circ_event = st.plotly_chart(
-                _build_atlas_circ_fig(_circ_bits),
-                on_select="rerun",
-                key="atlas_circuit_icon",
-                use_container_width=False,
-                config={"displayModeBar": False, "scrollZoom": False},
+            # Free-text edge input — parse on Enter / focus-out
+            def _on_edge_text():
+                _p = _parse_edge_text(st.session_state.get("atlas_edge_text", ""))
+                if _p is not None:
+                    st.session_state["_atlas_jump_circ"] = _p
+                    st.session_state["atlas_edge_text"]  = ""
+
+            st.text_input(
+                "Or type edges",
+                placeholder="e.g. F→T, T→F",
+                key="atlas_edge_text",
+                on_change=_on_edge_text,
+                help="Comma-separated edge names (→ or ->) — press Enter to apply",
             )
-            # Handle edge-toggle click: store pending toggle, rerun to apply before widget
-            if _circ_event and _circ_event.selection.points:
-                for _pt in _circ_event.selection.points:
-                    _cd = _pt.get("customdata")
-                    if _cd is not None:
-                        st.session_state["_atlas_toggle_edge"] = int(_cd[0])
-                        st.rerun()
-                    break
+            _raw_txt = st.session_state.get("atlas_edge_text", "")
+            if _raw_txt.strip() and _parse_edge_text(_raw_txt) is None:
+                st.caption("⚠️ Unknown edges")
+
+            # Static circuit topology icon (straight arrows, non-interactive)
+            _circ_bits = tuple(idx_to_vec.get(_sel_circ, (0,)*8))
+            st.image(
+                _circuit_png_b64(_circ_bits, _ALL_SD, size_in=1.8, dpi=130,
+                                 arrow_color="white", bg="#12122a"),
+                width=200,
+            )
 
             # Circuit summary metrics
             if not _summary_df.empty:
                 _sr = _summary_df[_summary_df["circuit_idx"] == _sel_circ]
                 if len(_sr):
-                    st.metric("Canonical hierarchy", f"{_sr['canonical_hier_freq_pct'].values[0]:.1f}%")
+                    st.metric("Canonical hierarchy",
+                              f"{_sr['canonical_hier_freq_pct'].values[0]:.1f}%")
                     st.metric("Phase types", int(_sr["n_phase_types"].values[0]))
 
             # Phase type selector
@@ -1633,28 +1551,27 @@ with tab_atlas:
             # Legend
             st.markdown("---")
             _leg_items = [
-                ("#2ecc71", "Stable attractor (n=0)"),
-                ("#f1c40f", "Saddle  n=1  (codim-3)"),
-                ("#e67e22", "Saddle  n=2  (codim-2)"),
-                ("#e74c3c", "Saddle  n=3  (codim-1)"),
-                ("#7f8c8d", "Repeller (n=4)"),
+                ("#2ecc71", "Stable (n=0)"),
+                ("#f1c40f", "Saddle n=1"),
+                ("#e67e22", "Saddle n=2"),
+                ("#e74c3c", "Saddle n=3"),
+                ("#7f8c8d", "Repeller"),
                 ("#ecf0f1", "Not detected"),
             ]
             st.markdown(
                 "".join(
-                    f'<span style="display:inline-block;width:14px;height:14px;'
-                    f'background:{c};border-radius:50%;margin-right:5px;vertical-align:middle;"></span>'
-                    f'<span style="font-size:12px;">{l}</span><br>'
+                    f'<span style="display:inline-block;width:12px;height:12px;'
+                    f'background:{c};border-radius:50%;margin-right:4px;'
+                    f'vertical-align:middle;"></span>'
+                    f'<span style="font-size:11px;">{l}</span><br>'
                     for c, l in _leg_items
                 ),
                 unsafe_allow_html=True,
             )
-
             if _atlas_version == 1:
-                st.caption("⚠️ Using v1 atlas (semi states not split into n=1/2/3). "
-                           "Re-run build_phase_atlas_v2.py for full detail.")
+                st.caption("⚠️ v1 atlas — semi not split. Re-run build_phase_atlas_v2.py.")
 
-        with _a_col2:
+        with _a_morse:
             _row = _circ_rows[_circ_rows["rank"] == _sel_rank]
             if len(_row):
                 _r = _row.iloc[0]
@@ -1672,6 +1589,35 @@ with tab_atlas:
                 )
                 st.pyplot(_fig, use_container_width=False)
                 plt.close(_fig)
+
+        with _a_bmarks:
+            st.markdown("**Bookmarks**")
+            _BOOKMARKS = [
+                (114, "All bwd\n~72%"),
+                (27,  "T→F+B→F\n~99%"),
+                (8,   "T→F"),
+                (2,   "B→M"),
+                (6,   "T→M"),
+                (1,   "No edges"),
+            ]
+            _bmark_circs_avail = set(_atlas_df["circuit_idx"].values)
+            for _bc, _blabel in _BOOKMARKS:
+                if _bc not in _bmark_circs_avail:
+                    continue
+                st.image(
+                    _circuit_png_b64(idx_to_vec.get(_bc, (0,)*8), _ALL_SD,
+                                     size_in=1.0, dpi=100,
+                                     arrow_color="white", bg="#12122a"),
+                    width=95,
+                )
+                if st.button(
+                    f"#{_bc}  {_blabel.split(chr(10))[0]}",
+                    key=f"bmark_{_bc}",
+                    use_container_width=True,
+                    type="secondary" if _bc != _sel_circ else "primary",
+                ):
+                    st.session_state["_atlas_jump_circ"] = _bc
+                    st.rerun()
 
 # ── Tab 5: take-home message ───────────────────────────────────────────────────
 with tab_takeaway:
