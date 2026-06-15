@@ -1735,8 +1735,10 @@ with tab_atlas:
                 for _pt in _bmark_event.selection.points:
                     _cd = _pt.get("customdata")
                     if _cd is not None:
-                        st.session_state["_atlas_jump_circ"] = int(_cd[0])
-                        st.rerun()
+                        _clicked = int(_cd[0])
+                        if _clicked != _sel_circ:   # Plotly keeps selection across reruns;
+                            st.session_state["_atlas_jump_circ"] = _clicked  # only jump when
+                            st.rerun()              # the circuit actually changes
                     break
 
 # ── Tab 5: take-home message ───────────────────────────────────────────────────
