@@ -474,6 +474,42 @@ def draw_morse_figure(title, stable_str, semi1_str, semi2_str, semi3_str,
                                         shrinkA=_M_SHRINK.get(sc, 5),
                                         shrinkB=_M_SHRINK.get(tc, 5)), zorder=1)
 
+    # ── Bistable separatrix connections (purple dotted) ───────────────────────
+    # F (pattern bit 0) and T (bit 2) are intrinsically bistable: their
+    # self-coupling exceeds their decay rate, giving two fixed-point branches
+    # in those sectors (stable upper branch + unstable lower separatrix).
+    # When two detected patterns differ by exactly one bistable cell type and
+    # the target is a genuine attractor, the separatrix mediates a transition
+    # that the rank-based arrow logic misses (stable→stable pairs share rank 0;
+    # semi→stable downward arrows were blocked by the sector-stability fix).
+    _BISTABLE_BITS = {0, 2}   # 0 = F, 2 = T in "FMTB" bit string
+    _all_det  = set(cls_dict.keys())
+    _attractor = {p for p, c in cls_dict.items()
+                  if c in ("stable", "semi1", "semi2", "semi3")}
+    for _a, _b in combinations(_M_PATS, 2):
+        if sum(x != y for x, y in zip(_a, _b)) != 1: continue
+        if _a not in _all_det or _b not in _all_det: continue
+        _bit = next(i for i in range(4) if _a[i] != _b[i])
+        if _bit not in _BISTABLE_BITS: continue
+        _src = _a if _a[_bit] == "1" else _b   # pattern WITH the bistable cell type
+        _tgt = _b if _src == _a else _a
+        if _tgt not in _attractor: continue     # target must be a genuine attractor
+        _cs = cls_dict.get(_src, "absent"); _ct = cls_dict.get(_tgt, "absent")
+        _rs = _M_RANK.get(_cs, -1);             _rt = _M_RANK.get(_ct, -1)
+        # Skip when the rank-based arrow already covers this direction
+        # (rs > rt AND source is not a semi node emitting a downward arrow)
+        _already = (_rs > _rt and not (
+            _cs in ("semi1", "semi2", "semi3") and _src.count("1") > _tgt.count("1")
+        ))
+        if _already: continue
+        _xs, _ys = _M_POS[_src]; _xt, _yt = _M_POS[_tgt]
+        ax.annotate("", xy=(_xt, _yt), xytext=(_xs, _ys),
+                    arrowprops=dict(arrowstyle="-|>", color="#8e44ad",
+                                    lw=0.9, mutation_scale=8,
+                                    linestyle="dotted",
+                                    shrinkA=_M_SHRINK.get(_cs, 5),
+                                    shrinkB=_M_SHRINK.get(_ct, 5)), zorder=1.5)
+
     for a, b in combinations(_M_PATS, 2):
         if sum(x != y for x, y in zip(a, b)) != 1: continue
         ca, cb = cls_dict.get(a), cls_dict.get(b)
@@ -1294,10 +1330,14 @@ particular:
 
 The **heteroclinic network** — the web of gradient-flow trajectories connecting
 saddles to attractors — is visible in the **🧭 Phase Atlas** tab, where each panel
-shows the 16 gene-expression states arranged as a 4-bit hypercube and coloured by
-stability class. Solid arrows indicate the inferred direction of heteroclinic flow
-(from less-stable to more-stable nodes); dashed arrows indicate putative
-transitions between saddle states of the same codimension.
+shows the 16 cell-type activation states arranged as a 4-bit hypercube and coloured by
+stability class. Three arrow types are shown:
+- **Solid dark** — inferred heteroclinic flow (from less-stable to more-stable nodes)
+- **Dashed gray** — putative transitions between saddle states of the same codimension
+- **Dotted purple** — bistable separatrix connections: F and T each sustain bistability
+  through positive self-coupling (pff > r_F, ptt > r_T), so any sector containing F or T
+  has two fixed-point branches. When two detected patterns differ by one bistable cell type,
+  a hidden unstable separatrix links them; the purple arrow marks this basin boundary.
 
 ---
 
@@ -1627,6 +1667,11 @@ with tab_atlas:
                 ("#7f8c8d", "Repeller"),
                 ("#ecf0f1", "Not detected"),
             ]
+            _arrow_items = [
+                ("#333333", "solid",  "Heteroclinic flow"),
+                ("#777777", "dashed", "Semi↔semi (putative)"),
+                ("#8e44ad", "dotted", "Bistable separatrix (F/T)"),
+            ]
             st.markdown(
                 "".join(
                     f'<span style="display:inline-block;width:12px;height:12px;'
@@ -1634,6 +1679,12 @@ with tab_atlas:
                     f'vertical-align:middle;"></span>'
                     f'<span style="font-size:11px;">{l}</span><br>'
                     for c, l in _leg_items
+                ) +
+                "<br><span style='font-size:10px;color:#555;font-style:italic'>Arrows</span><br>" +
+                "".join(
+                    f'<span style="font-size:13px;color:{c};">→</span>'
+                    f'<span style="font-size:10px;color:#555;margin-left:3px;">{l}</span><br>'
+                    for c, _, l in _arrow_items
                 ),
                 unsafe_allow_html=True,
             )
