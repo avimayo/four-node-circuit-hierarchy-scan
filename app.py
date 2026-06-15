@@ -1755,31 +1755,37 @@ with tab_atlas:
             _BOOKMARKS = (
                 (114, "All bwd ~72%"),
                 (27,  "T→F+B→F ~99%"),
-                (8,   "T→F only"),
+                (8,   "T→F"),
                 (2,   "B→M ~20%"),
-                (6,   "T→M only"),
+                (6,   "T→M"),
                 (1,   "No edges"),
             )
             _bmark_circs_avail = set(_atlas_df["circuit_idx"].values)
-            for _bc, _lbl in _BOOKMARKS:
-                if _bc not in _bmark_circs_avail:
-                    continue
-                _is_active = (_bc == _sel_circ)
-                _bc_bits   = tuple(idx_to_vec.get(_bc, (0,)*8))
-                st.image(
-                    _circuit_png_b64(_bc_bits, _ALL_SD, size_in=0.55, dpi=90,
-                                     arrow_color="white",
-                                     bg="#1a2a4a" if _is_active else "#12122a"),
-                    width=90,
-                )
-                if st.button(
-                    f"#{_bc} · {_lbl}",
-                    key=f"bmark_btn_{_bc}",
-                    type="primary" if _is_active else "secondary",
-                    use_container_width=True,
-                ):
-                    st.session_state["_atlas_jump_circ"] = _bc
-                    st.rerun()
+            _bmark_filtered = tuple(
+                (bc, lbl) for bc, lbl in _BOOKMARKS if bc in _bmark_circs_avail
+            )
+            _bmark_event = st.plotly_chart(
+                _build_bookmarks_fig(_bmark_filtered, _sel_circ),
+                on_select="rerun",
+                key="atlas_bookmarks",
+                use_container_width=False,
+                config={"displayModeBar": False, "scrollZoom": False},
+            )
+            if _bmark_event and _bmark_event.selection.points:
+                for _pt in _bmark_event.selection.points:
+                    _cd = _pt.get("customdata")
+                    if _cd is not None:
+                        _clicked = int(_cd[0])
+                        # on_select persists the selection across reruns, so we
+                        # track (clicked, from) as a unique transition ID and
+                        # skip if we already processed this exact jump.
+                        _tid = f"{_clicked}_{_sel_circ}"
+                        if _tid != st.session_state.get("_bmark_last_tid"):
+                            st.session_state["_bmark_last_tid"] = _tid
+                            if _clicked != _sel_circ:
+                                st.session_state["_atlas_jump_circ"] = _clicked
+                                st.rerun()
+                    break
 
 # ── Tab 5: take-home message ───────────────────────────────────────────────────
 with tab_takeaway:
