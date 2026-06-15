@@ -15,13 +15,14 @@ cascade** F → F+M → F+M+T+B, a pattern associated with productive anti-tumou
 
 ---
 
-## Current Status (2026-06-13)
+## Current Status (2026-06-14)
 
 **Data collection: complete (stable attractors).**  
 `final_results.csv` and `phenotype_table.csv` are present and up to date.
 The Streamlit dashboard (`app.py`) is the primary analysis and visualisation tool.
 
-**Semistable / ghost-attractor runs in progress** (see HPC section below).
+**circV3 (5-type pilot): COMPLETE** — 256/256 circuits done, output in `results_v3/`.  
+**circSemi (ghost attractors): IN PROGRESS** — 18% (160/891 missing chunks), job 398891 running.
 
 GitHub repo: `avimayo/four-node-circuit-hierarchy-scan`
 Deploy: Streamlit Community Cloud (auto-deploys on push to `main`)
@@ -65,7 +66,8 @@ Key design decisions:
 - ODE equations: multiplicative-linear (no logistic/carrying capacity term): `ẋ = x · (Σ inputs − r_x)`
 - **Bar tooltip**: `pat_hover_grid()` renders ■ (U+25A0) spans at 16px, `&nbsp;` spacing, colored F/M/T/B headers, italic state labels. Matches dark-bg tooltip style.
 - **Edge analysis tooltip**: uses `text=` param (not `customdata`) on go.Heatmap — Plotly reads `%{text}` from `text`, not `customdata`. Dark hoverlabel required.
-- **Circuit topology inspector**: below edge analysis heatmap; two selectboxes (n_fwd, n_bwd); shows mini-graphs from `build_all_circuit_images()` cache (dark arrows, 8 per row). Workaround for Plotly stripping `<img>` tags from hover.
+- **Circuit topology inspector**: below edge analysis heatmap; two selectboxes (n_fwd, n_bwd); rendered as `st.markdown` HTML block (not `st.columns`+`st.image`) so CSS `:hover` tooltips work. Each card shows canonical + relaxed hierarchy freq + top-3 patterns. Render params: `size_in=2.0, dpi=120, ms=16, lw=2.0, mutation_scale=17, shrinkA=8, shrinkB=8`, `width=180`. Bump `_CACHE_V` inside `build_all_circuit_images` to bust cache when params change.
+- **Scatter guide curve**: [2/1] Padé rational fit via numpy lstsq; falls back to quadratic if pole `x=-1/b1` is inside data range. `showlegend=False` on mean±SEM trace.
 - **Cascade detection in `pat_label()`**: bitwise subset chain check — patterns like {∅,F,F+M,F+M+T+B} display with "→" instead of "+".
 
 ---
@@ -98,24 +100,30 @@ Key design decisions:
 | `run_circuit_v2.wls` | Mathematica: stable + semistable (binary semi/not) |
 | `run_circuit_v3.wls` | **New** — 5-type classification: stable/semi1/semi2/semi3/unstable; single-pass loop; `Cancel[]` not `Simplify[]`; 1000 samples default → `results_v3/` |
 | `run_missing_semi.sh` | Wrapper: reads `missing_semi_jobs.txt`, dispatches v2 for incomplete chunks |
+| `run_missing_v3.sh` | Wrapper: reads `missing_v3_circuits.txt`, dispatches v3 for missing circuits |
 | `aggregate_v2.py` | Collates chunk CSVs → `_agg.csv` per circuit |
 | `make_interactive_heatmap.py` | Standalone HTML heatmap (legacy) |
 
 ---
 
-## Semistable / Ghost-Attractor Runs (2026-06-13)
+## Semistable / Ghost-Attractor Runs (updated 2026-06-14)
 
 **v2 completion — `circSemi[1-891]%50`** (job 398891, `medium` queue)
 - 891 missing (circuit, chunk) pairs identified from `results_v2/`; list in `missing_semi_jobs.txt`
 - Wrapper: `run_missing_semi.sh` — reads line `$LSB_JOBINDEX` → dispatches v2
 - Logs: `logs_semi/semi_%I.out`
-- Will accelerate overnight once Snakemake fairshare recovers (~1–2 AM)
+- **Status: 18% complete (160/891)** as of 2026-06-14 afternoon; still running
 
-**v3 pilot — `circV3[1-256]%50`** (job 401364, `short` queue)
-- 5-type classification: stable / semi1 / semi2 / semi3 / unstable
-- 1000 samples per circuit (algebraic, not ODE integration — very fast)
-- Output: `results_v3/circuit_XXX_r0_5_{stable,semi1,semi2,semi3,unstable}.csv`
-- ~174/256 done as of 19:50 on 2026-06-13; rest pending
+**v3 pilot — COMPLETE**
+- Job 401364 (`circV3[1-256]%50`) + job 485930 (`circV3r[1-68]%50`) resubmit
+- Resubmit used wrapper `run_missing_v3.sh` reading `missing_v3_circuits.txt`
+- **256/256 circuits complete** in `results_v3/`
+
+**Memory fix (2026-06-14):**
+- HPC team flagged jobs wasting 123 GB RAM — requested `mem=4000` but used ~215 MB (5%)
+- All 9 submit scripts patched: `mem=4000` → `mem=600`
+- Pending circSemi jobs updated live via `bmod -R 'rusage[mem=600]' 398891`
+- **Always use `mem=600` for Mathematica circuit jobs** (actual peak ~215 MB)
 
 **Classification definitions (v3):**
 - `stable` — all tangent + invasion eigenvalues ≤ 0 (proper attractor)

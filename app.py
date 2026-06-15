@@ -15,7 +15,8 @@ import plotly.express as px
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-from itertools import product
+import matplotlib.patches as mpatches
+from itertools import product, combinations
 from collections import defaultdict
 from pathlib import Path
 
@@ -314,6 +315,126 @@ def build_all_circuit_images():
         for c in range(1, 257)
     }
 
+# ── Morse complex drawing (Phase Portrait Atlas tab) ──────────────────────────
+_M_PATS   = [f"{i:04b}" for i in range(16)]
+_M_LABELS = {
+    "0000": "∅",   "1000": "F",   "0100": "M",   "0010": "T",   "0001": "B",
+    "1100": "FM",  "1010": "FT",  "1001": "FB",  "0110": "MT",  "0101": "MB",
+    "0011": "TB",  "1110": "FMT", "1101": "FMB", "1011": "FTB", "0111": "MTB",
+    "1111": "FMTB",
+}
+
+def _m_layout():
+    level_x = {0: [0], 1: [-1.5, -0.5, 0.5, 1.5],
+                2: [-2, -1, 0, 1, 2, 3], 3: [-1.5, -0.5, 0.5, 1.5], 4: [0]}
+    pos, by_lv = {}, {k: [] for k in range(5)}
+    for p in _M_PATS:
+        by_lv[p.count("1")].append(p)
+    for lv, pats in by_lv.items():
+        xs = level_x[lv]
+        for i, p in enumerate(sorted(pats)):
+            pos[p] = (xs[i] if i < len(xs) else i, lv * 1.5)
+    return pos
+
+_M_POS = _m_layout()
+
+def _m_parse(s):
+    return set(s.split("|")) if s and s != "none" else set()
+
+def _m_classify(stable, semi1, semi2, semi3, unstable):
+    cls = {}
+    for p in _m_parse(stable):   cls[p] = "stable"
+    for p in _m_parse(semi1):
+        if p not in cls:          cls[p] = "semi1"
+    for p in _m_parse(semi2):
+        if p not in cls:          cls[p] = "semi2"
+    for p in _m_parse(semi3):
+        if p not in cls:          cls[p] = "semi3"
+    for p in _m_parse(unstable):
+        if p not in cls:          cls[p] = "unstable"
+    return cls
+
+_M_RANK = {"stable": 0, "semi1": 1, "semi2": 2, "semi3": 3, "unstable": 4}
+
+_M_NODE = {
+    "stable":   dict(facecolor="#2ecc71", edgecolor="#145a32", zorder=5, s=600,  linewidths=2.5),
+    "semi1":    dict(facecolor="#f1c40f", edgecolor="#7d6608", zorder=4, s=360,  linewidths=1.8),
+    "semi2":    dict(facecolor="#e67e22", edgecolor="#784212", zorder=4, s=250,  linewidths=1.5),
+    "semi3":    dict(facecolor="#e74c3c", edgecolor="#7b241c", zorder=4, s=160,  linewidths=1.2),
+    "unstable": dict(facecolor="#7f8c8d", edgecolor="#2c3e50", zorder=3, s=100,  linewidths=1.0),
+    "absent":   dict(facecolor="#ecf0f1", edgecolor="#bdc3c7", zorder=1, s=80,   linewidths=0.5),
+}
+_M_SHRINK = {"stable": 15, "semi1": 12, "semi2": 10, "semi3": 8, "unstable": 6, "absent": 5}
+
+def draw_morse_figure(title, stable_str, semi1_str, semi2_str, semi3_str,
+                      unstable_str, freq_pct=None, figsize=(5.5, 5.0)):
+    fig, ax = plt.subplots(figsize=figsize)
+    fig.patch.set_facecolor("#fafafa")
+    ax.set_facecolor("#fafafa")
+    cls_dict  = _m_classify(stable_str, semi1_str, semi2_str, semi3_str, unstable_str)
+    all_semis = _m_parse(semi1_str) | _m_parse(semi2_str) | _m_parse(semi3_str)
+
+    for a, b in combinations(_M_PATS, 2):
+        if sum(x != y for x, y in zip(a, b)) == 1:
+            xa, ya = _M_POS[a]; xb, yb = _M_POS[b]
+            ax.plot([xa, xb], [ya, yb], color="#cccccc", lw=0.7, zorder=0)
+
+    for a, b in combinations(all_semis, 2):
+        if sum(x != y for x, y in zip(a, b)) != 1: continue
+        pa, pb = a.count("1"), b.count("1")
+        pairs = [(a, b)] if pa < pb else ([(b, a)] if pb < pa else [(a, b), (b, a)])
+        for src, tgt in pairs:
+            xs, ys = _M_POS[src]; xt, yt = _M_POS[tgt]
+            sc = cls_dict.get(src, "absent"); tc = cls_dict.get(tgt, "absent")
+            ax.annotate("", xy=(xt, yt), xytext=(xs, ys),
+                        arrowprops=dict(arrowstyle="-|>", color="#999999",
+                                        lw=0.7, mutation_scale=8,
+                                        shrinkA=_M_SHRINK.get(sc, 5),
+                                        shrinkB=_M_SHRINK.get(tc, 5)), zorder=1)
+
+    for a, b in combinations(_M_PATS, 2):
+        if sum(x != y for x, y in zip(a, b)) != 1: continue
+        ca, cb = cls_dict.get(a), cls_dict.get(b)
+        if ca is None or cb is None: continue
+        ra, rb = _M_RANK.get(ca, 3), _M_RANK.get(cb, 3)
+        if ra > rb:   src, tgt = a, b
+        elif rb > ra: src, tgt = b, a
+        else: continue
+        xs, ys = _M_POS[src]; xt, yt = _M_POS[tgt]
+        ax.annotate("", xy=(xt, yt), xytext=(xs, ys),
+                    arrowprops=dict(arrowstyle="-|>", color="#333333",
+                                    lw=1.4, mutation_scale=12,
+                                    shrinkA=_M_SHRINK.get(ca, 3),
+                                    shrinkB=_M_SHRINK.get(cb, 5)), zorder=2)
+
+    for pat in _M_PATS:
+        x, y = _M_POS[pat]
+        cls  = cls_dict.get(pat, "absent")
+        ax.scatter(x, y, **_M_NODE[cls].copy())
+        lbl = _M_LABELS[pat]
+        if cls in ("stable", "semi1", "semi2", "semi3"):
+            ax.text(x, y, lbl, ha="center", va="center",
+                    fontsize=7 if cls == "stable" else 6,
+                    fontweight="normal", color="black", zorder=6)
+        else:
+            col = "#555555" if cls == "unstable" else "#aaaaaa"
+            ax.text(x, y + 0.18, lbl, ha="center", va="bottom",
+                    fontsize=5, color=col, zorder=6)
+
+    n_sm = sum(len(_m_parse(s)) for s in (semi1_str, semi2_str, semi3_str))
+    info = (f"stable={len(_m_parse(stable_str))}  "
+            f"semi₁={len(_m_parse(semi1_str))} semi₂={len(_m_parse(semi2_str))} "
+            f"semi₃={len(_m_parse(semi3_str))}  unstable={len(_m_parse(unstable_str))}")
+    if freq_pct is not None:
+        info = f"{freq_pct:.1f}% of samples  ·  {info}"
+    ax.text(0.5, -0.04, info, transform=ax.transAxes, ha="center",
+            va="top", fontsize=6.5, color="#555555")
+    ax.set_title(title, fontsize=11, fontweight="bold", pad=8)
+    ax.set_xlim(-3, 4); ax.set_ylim(-0.5, 6.5)
+    ax.axis("off")
+    plt.tight_layout()
+    return fig
+
 # ── Data loading ───────────────────────────────────────────────────────────────
 @st.cache_data
 def load_attractor_data():
@@ -355,6 +476,34 @@ def load_phenotype_table():
             fwd_frac=fwd_frac, n_stable=n_stable,
         ))
     return pd.DataFrame(records)
+
+@st.cache_data
+def load_phase_atlas():
+    """Load phase atlas v2 (semi1/2/3 split) if available, else fall back to v1."""
+    p2 = BASE / "phase_atlas_v2.csv"
+    p1 = BASE / "phase_atlas.csv"
+    if p2.exists() and p2.stat().st_size > 1000:
+        df = pd.read_csv(p2)
+        df["_v"] = 2
+        return df
+    if p1.exists():
+        df = pd.read_csv(p1)
+        df["_v"] = 1
+        df["semi1_pat"] = df["semi_pat"]
+        df["semi2_pat"] = "none"
+        df["semi3_pat"] = "none"
+        return df
+    return pd.DataFrame()
+
+@st.cache_data
+def load_circuit_summary_atlas():
+    p2 = BASE / "circuit_summary_v2.csv"
+    if p2.exists() and p2.stat().st_size > 100:
+        return pd.read_csv(p2)
+    p1 = BASE / "circuit_summary.csv"
+    if p1.exists():
+        return pd.read_csv(p1)
+    return pd.DataFrame()
 
 pat_freq_raw, n_distinct = load_attractor_data()
 pat_freq = defaultdict(lambda: defaultdict(float),
@@ -928,11 +1077,12 @@ def build_forward_figure():
 # ══════════════════════════════════════════════════════════════════════════════
 st.title("Four-node circuit attractor landscape")
 
-tab_home, tab_heat, tab_bar, tab_fwd, tab_takeaway = st.tabs([
+tab_home, tab_heat, tab_bar, tab_fwd, tab_atlas, tab_takeaway = st.tabs([
     "📖 About",
     "🗺️ Topology heatmap",
     "📊 Solution types",
     "🔍 Edge analysis",
+    "🧭 Phase Atlas",
     "💡 Take-home",
 ])
 
@@ -1213,7 +1363,123 @@ with tab_fwd:
     else:
         st.caption("No circuits with those edge counts.")
 
-# ── Tab 4: take-home message ───────────────────────────────────────────────────
+# ── Tab 4: Phase Portrait Atlas ───────────────────────────────────────────────
+with tab_atlas:
+    st.markdown("## Phase Portrait Atlas")
+    st.caption(
+        "Each circuit's parameter space is partitioned into distinct *phase types* — "
+        "qualitatively different arrangements of stable attractors, saddle points, and repellers. "
+        "The Morse complex shows all 16 possible gene-expression states (4-bit hypercube) "
+        "coloured by stability class, with arrows indicating the inferred heteroclinic flow."
+    )
+
+    _atlas_df   = load_phase_atlas()
+    _summary_df = load_circuit_summary_atlas()
+
+    if _atlas_df.empty:
+        st.warning("phase_atlas.csv not found. Run build_phase_atlas.py first.")
+    else:
+        _atlas_version = int(_atlas_df["_v"].iloc[0]) if "_v" in _atlas_df.columns else 1
+
+        # ── Circuit selector ──────────────────────────────────────────────────
+        _a_col1, _a_col2 = st.columns([1, 3])
+
+        with _a_col1:
+            # Sort circuits by canonical hierarchy frequency (descending)
+            if not _summary_df.empty and "canonical_hier_freq_pct" in _summary_df.columns:
+                _sorted_circs = (
+                    _summary_df.sort_values("canonical_hier_freq_pct", ascending=False)
+                    ["circuit_idx"].tolist()
+                )
+            else:
+                _sorted_circs = sorted(_atlas_df["circuit_idx"].unique())
+
+            def _circ_label(c):
+                vec = idx_to_vec.get(c, (0,)*8)
+                bwd = [BWD_ENAMES[i] for i, b in enumerate(bwd_bits(vec)) if b]
+                lbl = ", ".join(bwd) if bwd else "∅"
+                if not _summary_df.empty and "canonical_hier_freq_pct" in _summary_df.columns:
+                    r = _summary_df[_summary_df["circuit_idx"] == c]
+                    pct = f"  {r['canonical_hier_freq_pct'].values[0]:.1f}%" if len(r) else ""
+                else:
+                    pct = ""
+                return f"#{c} [{lbl}]{pct}"
+
+            _sel_circ = st.selectbox(
+                "Circuit",
+                _sorted_circs,
+                format_func=_circ_label,
+                key="atlas_circ",
+            )
+
+            # Circuit summary metrics
+            if not _summary_df.empty:
+                _sr = _summary_df[_summary_df["circuit_idx"] == _sel_circ]
+                if len(_sr):
+                    st.metric("Canonical hierarchy", f"{_sr['canonical_hier_freq_pct'].values[0]:.1f}%")
+                    st.metric("Phase types", int(_sr["n_phase_types"].values[0]))
+
+            # Phase type selector
+            _circ_rows = (
+                _atlas_df[_atlas_df["circuit_idx"] == _sel_circ]
+                .sort_values("rank")
+                .reset_index(drop=True)
+            )
+            _type_opts = [
+                (int(r["rank"]), f"Type {int(r['rank'])}  ({float(r['freq_pct']):.1f}%)")
+                for _, r in _circ_rows.head(10).iterrows()
+            ]
+            _sel_rank = st.radio(
+                "Phase type",
+                [t[0] for t in _type_opts],
+                format_func=dict(_type_opts).__getitem__,
+                key="atlas_rank",
+            )
+
+            # Legend
+            st.markdown("---")
+            _leg_items = [
+                ("#2ecc71", "Stable attractor (n=0)"),
+                ("#f1c40f", "Saddle  n=1  (codim-3)"),
+                ("#e67e22", "Saddle  n=2  (codim-2)"),
+                ("#e74c3c", "Saddle  n=3  (codim-1)"),
+                ("#7f8c8d", "Repeller (n=4)"),
+                ("#ecf0f1", "Not detected"),
+            ]
+            st.markdown(
+                "".join(
+                    f'<span style="display:inline-block;width:14px;height:14px;'
+                    f'background:{c};border-radius:50%;margin-right:5px;vertical-align:middle;"></span>'
+                    f'<span style="font-size:12px;">{l}</span><br>'
+                    for c, l in _leg_items
+                ),
+                unsafe_allow_html=True,
+            )
+
+            if _atlas_version == 1:
+                st.caption("⚠️ Using v1 atlas (semi states not split into n=1/2/3). "
+                           "Re-run build_phase_atlas_v2.py for full detail.")
+
+        with _a_col2:
+            _row = _circ_rows[_circ_rows["rank"] == _sel_rank]
+            if len(_row):
+                _r = _row.iloc[0]
+                _title = (f"Circuit {_sel_circ}  —  Phase type {_sel_rank}  "
+                          f"({float(_r['freq_pct']):.1f}% of samples)")
+                _fig = draw_morse_figure(
+                    _title,
+                    str(_r.get("stable_pat",  "none")),
+                    str(_r.get("semi1_pat",   "none")),
+                    str(_r.get("semi2_pat",   "none")),
+                    str(_r.get("semi3_pat",   "none")),
+                    str(_r.get("unstable_pat","none")),
+                    freq_pct=float(_r["freq_pct"]),
+                    figsize=(7, 6),
+                )
+                st.pyplot(_fig, use_container_width=False)
+                plt.close(_fig)
+
+# ── Tab 5: take-home message ───────────────────────────────────────────────────
 with tab_takeaway:
     _, _tm, _ = st.columns([1, 5, 1])
     with _tm:
@@ -1234,18 +1500,55 @@ with tab_takeaway:
   The hierarchy-frequency vs backward-fraction scatter shows a sharp jump from ~0 % at zero backward edges to substantial frequency as soon as any backward edge is added.
   The forward-fraction scatter shows no corresponding trend — ruling out forward edges as drivers.
 
+- **Every high-hierarchy circuit has zero forward edges.**
+  The 10 highest-hierarchy circuits (canonical strict frequency > 20%) all have *only* backward
+  edges and zero forward edges. Adding even a single forward edge drops hierarchy frequency
+  by 88–112×. This is a complete structural constraint: the hierarchy phenotype requires a
+  **pure feedback topology**.
+
+- **The potency of individual backward edges follows a strict ranking.**
+  Single-backward-edge circuits rank: B→M (~12%) > T→M (~10%) > B→F (~8%) > T→F (~4%).
+  The M-targeted feedbacks (B→M, T→M) are roughly 2× more potent than the F-targeted ones.
+
+- **Hierarchy exactly equals hierarchy-with-semi across all circuits.**
+  Semi-stable states (ghost attractors) never *create* hierarchy: every parameter sample
+  showing the strict hierarchy already shows it with only stable attractors, and vice versa.
+  The cascade is a clean attractor property, not an artefact of boundary effects.
+
 - **Which specific backward edges matter is visible in the topology heatmap.**
   The row structure of the heatmap (each row = one backward-edge combination) reveals which TB→FM feedback patterns are most potent. Inspect the "Hierarchy: Canonical F→F+M→all (strict)" view for the clearest signal.
 
-- **Hierarchy is largely insensitive to forward-edge count once feedback is present.**
-  Within the high-hierarchy region of the heatmap, colour (forward combination) varies broadly without strongly tracking hierarchy frequency — suggesting forward edges modulate *how* the hierarchy is expressed, not *whether* it exists.
+- **Hierarchy is insensitive to forward-edge count once backward feedback is present.**
+  Within the high-hierarchy region of the heatmap, colour (forward combination) varies broadly without strongly tracking hierarchy frequency — forward edges modulate *how* the hierarchy is expressed, not *whether* it exists.
+
+---
+
+### 🧭 Phase portrait atlas (new)
+
+- **Each circuit occupies a distinctive region of Morse theory phase space.**
+  Circuit 114 (all 4 backward edges) has 18 distinct phase types across parameter space,
+  of which 99.85% share the canonical hierarchy attractor arrangement. Only 0.15% show
+  a different stable set — corresponding to a rare bifurcation where the T+B co-culture
+  stabilises as its own attractor.
+
+- **Circuit 2 (B→M only) shows the dominant competing bifurcation.**
+  78.4% of its parameter space shows a non-canonical phase type where the T+B state
+  stabilises. This "T+B takeover" phase is the main competing attractor configuration
+  suppressed by full backward feedback in circuit 114.
+
+See the **🧭 Phase Atlas** tab for interactive Morse complex visualisation of any circuit.
 
 ---
 
 ### 🔬 In progress
 
-- **Semistable (ghost) attractors.** The current analysis covers only stable fixed points.
-  Semistable states — stable within their face but with a positive invasion eigenvalue — are available for ~1,670 circuits from the first HPC run and represent quasi-stable transient phenotypes.
+- **Eigenvalue-based stability classification.** Saddle points are classified by the number
+  of positive eigenvalues (codimension n=1, 2, or 3). The Phase Atlas will display all
+  three saddle types as distinct colours once the v2 atlas build completes on the cluster.
+
+- **Eigenvector analysis.** For the top 10 high-hierarchy circuits, the eigenvectors of
+  unstable eigenvalues are being extracted to determine the dominant invasion directions
+  at each saddle — i.e., which cell type drives the heteroclinic transitions.
 
 ---
 
@@ -1259,4 +1562,8 @@ with tab_takeaway:
 - **Robustness to kinetic constants.** The fixed parameters ($p_{FF}$, $p_{MF}$, …, $K_x$, $r_x$)
   were set from a single biological parameterisation. Do the topology-level results
   (especially the backward-signaling threshold) survive if those constants are varied?
+
+- **Oscillatory approach to attractors.** Some eigenvalues have non-zero imaginary parts,
+  implying spiral trajectories near saddles and attractors. How prevalent is oscillatory
+  dynamics, and does it differ between high- and low-hierarchy circuits?
 """)
