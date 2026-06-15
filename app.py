@@ -325,48 +325,66 @@ def _build_atlas_circ_fig(bits_tuple):
     EDGE_DEF = [("F","T"),("T","F"),("M","T"),("T","M"),
                 ("F","B"),("B","F"),("M","B"),("B","M")]
     ENAMES   = ["F→T","T→F","M→T","T→M","F→B","B→F","M→B","B→M"]
-    BG   = "#12122a"
-    SHR  = 0.12   # arrow shrink from node centres (data units)
-    PERP = 0.05   # perpendicular offset separating antiparallel pairs
-    N_HIT = 9     # invisible hit-target markers spread along each arrow
+    BG    = "#12122a"
+    SHR   = 0.12   # shrink from node centre (data units)
+    CURVE = 0.18   # Bézier control-point perpendicular offset (bow depth)
+    N_BEZ = 50     # curve resolution (points)
+    N_HIT = 11     # invisible click-target markers per arrow
+    TIP   = 0.03   # length of arrowhead annotation (data units)
+
+    def _bez(p0, p1, c, n):
+        """Quadratic Bézier from p0 to p1 with control point c."""
+        ts = [k/(n-1) for k in range(n)]
+        xs = [(1-t)**2*p0[0] + 2*(1-t)*t*c[0] + t**2*p1[0] for t in ts]
+        ys = [(1-t)**2*p0[1] + 2*(1-t)*t*c[1] + t**2*p1[1] for t in ts]
+        return xs, ys
 
     fig = go.Figure()
 
     for i, (src, tgt) in enumerate(EDGE_DEF):
         sx, sy = NP[src]; tx, ty = NP[tgt]
         L  = ((tx-sx)**2 + (ty-sy)**2)**0.5
-        ux, uy = (tx-sx)/L, (ty-sy)/L      # unit vector along edge
-        px, py = -uy, ux                    # perpendicular (90° CCW)
-        # even index → +offset side, odd (reverse) → −offset side
-        off = PERP if i % 2 == 0 else -PERP
+        ux, uy = (tx-sx)/L, (ty-sy)/L   # unit along edge
+        px, py = -uy, ux                  # perpendicular 90° CCW
+        off    = CURVE if i % 2 == 0 else -CURVE
         active = bool(bits_tuple[i])
+        color  = "white" if active else "#2e2e3e"
 
-        # Offset endpoints so antiparallel arrows don't overlap
-        sx_o, sy_o = sx + off*px, sy + off*py
-        tx_o, ty_o = tx + off*px, ty + off*py
-        # Arrow tail/head after shrinking away from node circles
-        ax_o, ay_o = sx_o + SHR*ux, sy_o + SHR*uy
-        hx_o, hy_o = tx_o - SHR*ux, ty_o - SHR*uy
+        tail = (sx + SHR*ux, sy + SHR*uy)
+        head = (tx - SHR*ux, ty - SHR*uy)
+        mid  = ((tail[0]+head[0])/2, (tail[1]+head[1])/2)
+        ctrl = (mid[0] + off*px, mid[1] + off*py)
 
-        # Visual arrow annotation (non-clickable)
+        bx, by = _bez(tail, head, ctrl, N_BEZ)
+
+        # Visual curved line
+        fig.add_trace(go.Scatter(
+            x=bx, y=by, mode="lines",
+            line=dict(color=color, width=2.2 if active else 0.5),
+            hoverinfo="skip", showlegend=False,
+        ))
+
+        # Arrowhead: tiny annotation aligned to Bézier tangent at the head
+        # Tangent at t=1 of quadratic Bézier points from ctrl → head
+        tang_x = head[0] - ctrl[0]; tang_y = head[1] - ctrl[1]
+        tang_L = (tang_x**2 + tang_y**2)**0.5
+        tang_x /= tang_L; tang_y /= tang_L
         fig.add_annotation(
-            x=hx_o, y=hy_o, ax=ax_o, ay=ay_o,
+            x=head[0], y=head[1],
+            ax=head[0] - TIP*tang_x, ay=head[1] - TIP*tang_y,
             xref="x", yref="y", axref="x", ayref="y",
-            showarrow=True,
-            arrowhead=2, arrowsize=0.85,
-            arrowwidth=2.5 if active else 0.5,
-            arrowcolor="white" if active else "#2e2e3e",
+            showarrow=True, arrowhead=2, arrowsize=1.0,
+            arrowwidth=2.2 if active else 0.5,
+            arrowcolor=color,
         )
 
-        # Invisible markers spread along the arrow — these are the click targets.
-        # Nearly transparent so nothing is visible, but hover + click still fire.
-        ts = [0.20 + 0.60 * k / (N_HIT - 1) for k in range(N_HIT)]
-        xs = [sx_o + t*(tx_o - sx_o) for t in ts]
-        ys = [sy_o + t*(ty_o - sy_o) for t in ts]
+        # Invisible click-target markers distributed along the curve
+        idxs  = [int(2 + k*(N_BEZ-4)/(N_HIT-1)) for k in range(N_HIT)]
+        hit_x = [bx[j] for j in idxs]
+        hit_y = [by[j] for j in idxs]
         fig.add_trace(go.Scatter(
-            x=xs, y=ys,
-            mode="markers",
-            marker=dict(size=16, symbol="circle",
+            x=hit_x, y=hit_y, mode="markers",
+            marker=dict(size=18, symbol="circle",
                         color="rgba(0,0,0,0.01)", line=dict(width=0)),
             customdata=[[i]] * N_HIT,
             hovertemplate=(
@@ -382,7 +400,7 @@ def _build_atlas_circ_fig(bits_tuple):
     for node, (x, y) in NP.items():
         fig.add_trace(go.Scatter(
             x=[x], y=[y], mode="markers+text",
-            marker=dict(size=32, color=NC[node], line=dict(width=0)),
+            marker=dict(size=34, color=NC[node], line=dict(width=0)),
             text=[node],
             textfont=dict(color="white", size=13),
             textposition="middle center",
@@ -393,8 +411,8 @@ def _build_atlas_circ_fig(bits_tuple):
         paper_bgcolor=BG, plot_bgcolor=BG,
         xaxis=dict(range=[-0.05, 1.05], visible=False, fixedrange=True),
         yaxis=dict(range=[-0.05, 1.05], visible=False, scaleanchor="x", fixedrange=True),
-        width=220, height=220,
-        margin=dict(l=4, r=4, t=4, b=4),
+        width=320, height=320,
+        margin=dict(l=8, r=8, t=8, b=8),
         dragmode=False, clickmode="event",
     )
     return fig
@@ -1569,8 +1587,8 @@ with tab_atlas:
                 key="atlas_circ",
             )
 
-            # Interactive circuit topology — click an edge to toggle it on/off
-            st.caption("Click an edge ● to add/remove it")
+            # Interactive circuit topology — click an arrow to toggle it on/off
+            st.caption("Click an arrow to add / remove it")
             _circ_bits = tuple(idx_to_vec.get(_sel_circ, (0,)*8))
             _circ_event = st.plotly_chart(
                 _build_atlas_circ_fig(_circ_bits),
