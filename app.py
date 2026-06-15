@@ -1290,8 +1290,12 @@ transitions between saddle states of the same codimension.
 
 ## How the data were collected
 
-Simulations ran on a **high-performance computing cluster** using
-**Wolfram Mathematica 14.3** to solve the ODE system.
+Simulations ran on a **high-performance computing cluster** using a
+custom **Python** solver. For each parameter sample, the solver
+analytically locates all fixed points by solving the linear system
+in each of the 16 gene-expression sectors (subsets of active genes),
+then classifies each fixed point by counting positive Jacobian
+eigenvalues.
 Jobs were submitted via the LSF scheduler — 2,560 array jobs in total
 (256 circuits × 10 independent chunks of 10,000 samples each = **100,000 samples per circuit**).
 Results were aggregated per circuit and stored in `final_results.csv`.
