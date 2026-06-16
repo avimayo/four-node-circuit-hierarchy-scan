@@ -1274,6 +1274,8 @@ def build_forward_figure():
 # ══════════════════════════════════════════════════════════════════════════════
 st.title("Four-node circuit attractor landscape")
 
+st.info("🔧 **Morse diagrams under construction** — improved heteroclinic graph data is being computed. Check back soon.", icon=None)
+
 tab_home, tab_heat, tab_bar, tab_fwd, tab_atlas, tab_takeaway = st.tabs([
     "📖 About",
     "🗺️ Topology heatmap",
