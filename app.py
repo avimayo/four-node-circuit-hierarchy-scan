@@ -496,6 +496,7 @@ def draw_morse_figure(title, stable_str, semi1_str, semi2_str, semi3_str,
                 _gx, _gy = _M_POS[_p]
                 _ghost_pos[_p] = (_gx, _gy - 0.5)
                 _ghost_sec_cls[_p] = min(_sec, key=lambda c: _M_RANK.get(c, 5))
+    _ghost_has_arrows: set = set()  # filled during arrow steps; ghost only drawn if non-empty
 
     for a, b in combinations(_M_PATS, 2):
         if sum(x != y for x, y in zip(a, b)) == 1:
@@ -550,6 +551,7 @@ def draw_morse_figure(title, stable_str, semi1_str, semi2_str, semi3_str,
         if _already: continue
         _xs, _ys = _ghost_pos.get(_src, _M_POS[_src]); _xt, _yt = _M_POS[_tgt]
         _shA = 4 if _src in _ghost_pos else _M_SHRINK.get(_cs, 5)
+        if _src in _ghost_pos: _ghost_has_arrows.add(_src)
         ax.annotate("", xy=(_xt, _yt), xytext=(_xs, _ys),
                     arrowprops=dict(arrowstyle="-|>", color="#8e44ad",
                                     lw=0.9, mutation_scale=8, linestyle="dotted",
@@ -591,6 +593,7 @@ def draw_morse_figure(title, stable_str, semi1_str, semi2_str, semi3_str,
             else:
                 _col, _ls, _lw, _ms, _zo = "#1a1a2e", "solid", 0.8 + _conf * 0.8, 12, 3
             _use_ghost = (_er["dominant_type"] == "bistable" and _src in _ghost_pos)
+            if _use_ghost: _ghost_has_arrows.add(_src)
             _xs, _ys = _ghost_pos[_src] if _use_ghost else _M_POS[_src]
             _xt, _yt = _M_POS[_tgt]
             _shA = 4 if _use_ghost else _M_SHRINK.get(_cs, 5)
@@ -629,6 +632,8 @@ def draw_morse_figure(title, stable_str, semi1_str, semi2_str, semi3_str,
     _GHOST_COL = {"semi1": "#f1c40f", "semi2": "#e67e22",
                   "semi3": "#e74c3c", "unstable": "#7f8c8d"}
     for _gp, (_gx, _gy) in _ghost_pos.items():
+        if _gp not in _ghost_has_arrows:
+            continue  # no arrows were generated — skip dangling ghost
         _sc = _ghost_sec_cls.get(_gp, "semi1")
         _gc = _GHOST_COL.get(_sc, "#f1c40f")
         ax.scatter(_gx, _gy, s=110, marker='D', facecolor="none",
