@@ -605,8 +605,7 @@ def draw_morse_figure(title, stable_str, semi1_str, semi2_str, semi3_str,
                 _col, _ls, _lw, _ms, _zo = "#1a1a2e", "solid", 0.8 + _conf * 0.8, 12, 3
             _use_ghost = (_src in _ghost_pos and (
                 _er["dominant_type"] == "bistable" or
-                (_er["dominant_type"] == "boundary_analytic" and
-                 _tgt.count("1") < _src.count("1"))))
+                _er["dominant_type"] == "boundary_analytic"))
             if _use_ghost: _ghost_has_arrows.add(_src)
             _xs, _ys = _ghost_pos[_src] if _use_ghost else _M_POS[_src]
             _xt, _yt = _M_POS[_tgt]
@@ -1954,14 +1953,6 @@ with tab_atlas:
                 )
                 st.pyplot(_fig, use_container_width=False)
                 plt.close(_fig)
-                # Debug: edge count
-                _dbg_h = _HETERO_EDGES.get(_sel_circ)
-                if _dbg_h is not None:
-                    _dbg_ba = int((_dbg_h["dominant_type"] == "boundary_analytic").sum())
-                    st.caption(f"debug — {len(_dbg_h)} edges loaded for circ {_sel_circ} "
-                               f"({_dbg_ba} boundary_analytic)")
-                else:
-                    st.caption(f"debug — no edges for circ {_sel_circ}")
 
         with _a_bmarks:
             st.caption("Bookmarks")
