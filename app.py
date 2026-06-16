@@ -233,7 +233,7 @@ def _circuit_png_b64(bits, edge_sds, size_in=0.42, dpi=120, arrow_color="white",
     for node, (nx, ny) in _NP_MPL.items():
         ax.plot(nx, ny, "o", ms=16, color=_NC_MPL[node], zorder=5, markeredgewidth=0)
         if show_labels:
-            ax.text(nx, ny - 0.05, node, ha="center", va="center",
+            ax.text(nx, ny - 0.02, node, ha="center", va="center",
                     fontsize=max(3, size_in * 4), fontweight="bold", color="white",
                     zorder=6, family="monospace")
     buf = io.BytesIO()
