@@ -213,7 +213,7 @@ _BWD_SD = [
 # Interleaved: (F→T, T→F, M→T, T→M, F→B, B→F, M→B, B→M) — matches idx_to_vec bit order
 _ALL_SD = [e for pair in zip(_FWD_SD, _BWD_SD) for e in pair]
 
-def _circuit_png_b64(bits, edge_sds, size_in=0.42, dpi=120, arrow_color="white", bg=None):
+def _circuit_png_b64(bits, edge_sds, size_in=0.42, dpi=120, arrow_color="white", bg=None, show_labels=False):
     fig, ax = plt.subplots(figsize=(size_in, size_in), dpi=dpi)
     ax.set_xlim(0, 1); ax.set_ylim(0, 1)
     ax.set_aspect("equal")
@@ -232,6 +232,10 @@ def _circuit_png_b64(bits, edge_sds, size_in=0.42, dpi=120, arrow_color="white",
                                         shrinkA=8, shrinkB=8))
     for node, (nx, ny) in _NP_MPL.items():
         ax.plot(nx, ny, "o", ms=16, color=_NC_MPL[node], zorder=5, markeredgewidth=0)
+        if show_labels:
+            ax.text(nx, ny, node, ha="center", va="center",
+                    fontsize=max(4, size_in * 6), fontweight="bold", color="white",
+                    zorder=6, family="monospace")
     buf = io.BytesIO()
     fig.savefig(buf, format="png", bbox_inches="tight",
                 transparent=(bg is None), dpi=dpi, pad_inches=0.02)
@@ -327,10 +331,10 @@ def build_tick_images():
 @st.cache_data
 def build_all_circuit_images():
     """All 256 circuit PNG data-URIs (white arrows on dark bg — for topology inspector)."""
-    _CACHE_V = 8  # bump to bust Streamlit cache when render params change
+    _CACHE_V = 9  # bump to bust Streamlit cache when render params change
     return {
         c: _circuit_png_b64(idx_to_vec[c], _ALL_SD, size_in=2.0, dpi=120,
-                            arrow_color="white", bg="#12122a")
+                            arrow_color="white", bg="#12122a", show_labels=True)
         for c in range(1, 257)
     }
 
@@ -346,7 +350,7 @@ def _build_bookmarks_fig(bookmark_circuits, sel_circ):
     for i, (bc, blabel) in enumerate(bookmark_circuits):
         img_b64  = _circuit_png_b64(idx_to_vec.get(bc, (0,)*8), _ALL_SD,
                                      size_in=1.0, dpi=100,
-                                     arrow_color="white", bg="#12122a")
+                                     arrow_color="white", bg="#12122a", show_labels=True)
         active   = (bc == sel_circ)
         y_top    = 1.0 - i / N
         y_bot    = 1.0 - (i + 1) / N
@@ -1701,7 +1705,7 @@ with tab_atlas:
             _circ_bits = tuple(idx_to_vec.get(_sel_circ, (0,)*8))
             st.image(
                 _circuit_png_b64(_circ_bits, _ALL_SD, size_in=1.8, dpi=130,
-                                 arrow_color="white", bg="#12122a"),
+                                 arrow_color="white", bg="#12122a", show_labels=True),
                 width=200,
             )
 
