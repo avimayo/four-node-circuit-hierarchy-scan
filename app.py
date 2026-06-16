@@ -1446,7 +1446,7 @@ $\dot{x}=0$ at $x=0$, so the all-inactive state is always a trivial fixed point.
 ## Phase space structure — Morse theory
 
 The ODE system defines a **gradient-like flow** on the 16-dimensional simplex of
-possible gene-expression states. Morse theory provides the mathematical framework
+possible cell-activation states. Morse theory provides the mathematical framework
 for classifying and counting the fixed points (attractors, saddles, repellers) and
 the flow channels connecting them.
 
@@ -1468,7 +1468,7 @@ $$C_0 - C_1 + C_2 - C_3 + C_4 = \chi$$
 
 must hold exactly.
 
-**What is $\chi$ for this system?** Gene expressions are non-negative, so the
+**What is $\chi$ for this system?** Cell populations are non-negative, so the
 natural state space is the positive orthant $\mathbb{R}^4_{\geq 0}$. This space
 is **contractible** — it can be continuously deformed to a point — which means
 its Euler characteristic is $\chi = 1$. The governing constraint is therefore:
@@ -1511,7 +1511,7 @@ stability class. Three arrow types are shown:
 Simulations ran on a **high-performance computing cluster** using a
 custom **Python** solver. For each parameter sample, the solver
 analytically locates all fixed points by solving the linear system
-in each of the 16 gene-expression sectors (subsets of active genes),
+in each of the 16 cell-activation sectors (subsets of active cell types),
 then classifies each fixed point by counting positive Jacobian
 eigenvalues.
 Jobs were submitted via the LSF scheduler — 2,560 array jobs in total
@@ -1752,7 +1752,7 @@ with tab_atlas:
     st.caption(
         "Each circuit's parameter space is partitioned into distinct *phase types* — "
         "qualitatively different arrangements of stable attractors, saddle points, and repellers. "
-        "The Morse complex shows all 16 possible gene-expression states (4-bit hypercube) "
+        "The Morse complex shows all 16 possible cell-activation states (4-bit hypercube) "
         "coloured by stability class, with arrows indicating the inferred heteroclinic flow."
     )
 
