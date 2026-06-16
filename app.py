@@ -1730,6 +1730,21 @@ with tab_atlas:
                     pct = ""
                 return f"#{c} [{lbl}]{pct}"
 
+            def _on_circ_num():
+                raw = st.session_state.get("atlas_circ_num", "").strip()
+                if raw.isdigit():
+                    n = int(raw)
+                    if n in _sorted_circs:
+                        st.session_state["_atlas_jump_circ"] = n
+                st.session_state["atlas_circ_num"] = ""
+
+            st.text_input(
+                "Go to circuit #",
+                placeholder="1 – 256",
+                key="atlas_circ_num",
+                on_change=_on_circ_num,
+            )
+
             _sel_circ = st.selectbox(
                 "Circuit",
                 _sorted_circs,
