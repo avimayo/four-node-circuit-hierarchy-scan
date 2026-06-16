@@ -594,6 +594,8 @@ def draw_morse_figure(title, stable_str, semi1_str, semi2_str, semi3_str,
             _alpha = min(1.0, 0.4 + _conf * 0.6)
             if _er["dominant_type"] == "bistable":
                 _col, _ls, _lw, _ms, _zo = "#8e44ad", "dotted", 0.8 + _conf * 0.4, 8, 2.5
+            elif _er["dominant_type"] == "boundary_analytic":
+                _col, _ls, _lw, _ms, _zo = "#1e8449", "dashed", 0.7 + _conf * 0.6, 10, 2.8
             else:
                 _col, _ls, _lw, _ms, _zo = "#1a1a2e", "solid", 0.8 + _conf * 0.8, 12, 3
             _use_ghost = (_er["dominant_type"] == "bistable" and _src in _ghost_pos)
@@ -695,6 +697,7 @@ def draw_morse_figure(title, stable_str, semi1_str, semi2_str, semi3_str,
         Line2D([0],[0], color="#333333", lw=1.5, label="Heteroclinic flow"),
         Line2D([0],[0], color="#777777", lw=1.0, linestyle="--", label="Semi↔semi (putative)"),
         Line2D([0],[0], color="#8e44ad", lw=1.0, linestyle=":", label="Bistable manifold"),
+        Line2D([0],[0], color="#1e8449", lw=1.0, linestyle="--", label="Boundary-analytic"),
     ]
     ax.legend(handles=_leg, loc="lower right", fontsize=6, handlelength=2.2,
               framealpha=0.85, edgecolor="#cccccc", labelspacing=0.3,
@@ -706,14 +709,15 @@ def draw_morse_figure(title, stable_str, semi1_str, semi2_str, semi3_str,
 # ── Data loading ───────────────────────────────────────────────────────────────
 @st.cache_data
 def load_heteroclinic_edges():
-    p = BASE / "heteroclinic_edges.csv"
-    if not p.exists() or p.stat().st_size == 0:
-        return {}
-    df = pd.read_csv(p, dtype={"src": str, "tgt": str})
-    df["src"] = df["src"].str.zfill(4)
-    df["tgt"] = df["tgt"].str.zfill(4)
-    # index by circuit_idx for fast lookup
-    return {circ: grp for circ, grp in df.groupby("circuit_idx")}
+    # prefer the augmented file (adds analytically-derived boundary edges)
+    for fname in ("heteroclinic_edges_augmented.csv", "heteroclinic_edges.csv"):
+        p = BASE / fname
+        if p.exists() and p.stat().st_size > 0:
+            df = pd.read_csv(p, dtype={"src": str, "tgt": str})
+            df["src"] = df["src"].str.zfill(4)
+            df["tgt"] = df["tgt"].str.zfill(4)
+            return {circ: grp for circ, grp in df.groupby("circuit_idx")}
+    return {}
 
 _HETERO_EDGES = load_heteroclinic_edges()
 
@@ -1491,12 +1495,14 @@ The **heteroclinic network** — the web of gradient-flow trajectories connectin
 saddles to attractors — is visible in the **🧭 Phase Atlas** tab, where each panel
 shows the 16 cell-type activation states arranged as a 4-bit hypercube and coloured by
 stability class. Three arrow types are shown:
-- **Solid dark** — inferred heteroclinic flow (from less-stable to more-stable nodes)
+- **Solid dark** — inferred heteroclinic flow (from Monte Carlo eigenvector analysis)
 - **Dashed gray** — putative transitions between saddle states of the same codimension
 - **Dotted purple** — bistable separatrix connections: F and T each sustain bistability
   through positive self-coupling (pff > r_F, ptt > r_T), so any sector containing F or T
   has two fixed-point branches. When two detected patterns differ by one bistable cell type,
   a hidden unstable separatrix links them; the purple arrow marks this basin boundary.
+- **Dashed green** — boundary-analytic connections: derived from exact invasion eigenvalue
+  analysis on the parameter-independent boundary faces (see below).
 
 ---
 
@@ -1511,6 +1517,34 @@ eigenvalues.
 Jobs were submitted via the LSF scheduler — 2,560 array jobs in total
 (256 circuits × 10 independent chunks of 10,000 samples each = **100,000 samples per circuit**).
 Results were aggregated per circuit and stored in `final_results.csv`.
+
+### Boundary-analytic heteroclinic edges
+
+A complementary set of edges is derived **without sampling** by exploiting a key structural
+property of the model: the FM sub-system (F and M equations at T = B = 0) and the TB
+sub-system (T and B equations at F = M = 0) involve **no free parameters** — all 8 free
+parameters correspond to cross-group edges that vanish on these faces. This means the two
+key boundary fixed points are **the same across all 256 circuits**:
+
+| Face | Fixed point | Location |
+|------|-------------|----------|
+| FM | FM* (stable) | F ≈ 2.68, M ≈ 3.38 |
+| FM | FM⁻ (saddle) | F ≈ 2.26, M ≈ 0.01 |
+| TB | TB* | T ≈ 1.50, B ≈ 0.63 |
+| F-axis | F*, F⁻ | F ≈ 2.25 / 0.65 |
+| T-axis | T*, T⁻ | T ≈ 1.90 / 0.10 |
+
+For each circuit, **invasion eigenvalues** at these boundary states are computed analytically.
+They are linear functions of the circuit's free parameters, giving exact probability expressions.
+For example, at the TB face with T→F present, the F-invasion eigenvalue is
+λ_F = P_TF · T_TB − r_F, and F invades whenever P_TF > r_F / T_TB ≈ 0.50 — a threshold
+covering 90% of the [0, 5] parameter range.
+
+This fills a systematic gap in the Monte Carlo coverage: the eigenvector sampling rarely
+encounters TB or FM as **saddle** states (they appear much more often as stable attractors),
+so the Monte Carlo misses their outgoing connections. The boundary analysis adds these edges
+with analytically computed confidence values, shown as **dashed green** arrows in the
+Phase Atlas.
         """)
 
         st.markdown("---")
@@ -1845,6 +1879,7 @@ with tab_atlas:
                 ("#333333", "Heteroclinic flow"),
                 ("#777777", "Semi↔semi (putative)"),
                 ("#8e44ad", "Bistable separatrix (F/T)"),
+                ("#1e8449", "Boundary-analytic"),
             ]
             st.markdown(
                 "".join(
