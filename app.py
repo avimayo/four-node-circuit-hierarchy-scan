@@ -233,7 +233,7 @@ def _circuit_png_b64(bits, edge_sds, size_in=0.42, dpi=120, arrow_color="white",
     for node, (nx, ny) in _NP_MPL.items():
         ax.plot(nx, ny, "o", ms=16, color=_NC_MPL[node], zorder=5, markeredgewidth=0)
         if show_labels:
-            ax.text(nx, ny - 0.02, node, ha="center", va="center",
+            ax.text(nx, ny, node, ha="center", va="center",
                     fontsize=max(3, size_in * 4), fontweight="bold", color="white",
                     zorder=6, family="monospace")
     buf = io.BytesIO()
@@ -483,6 +483,20 @@ def draw_morse_figure(title, stable_str, semi1_str, semi2_str, semi3_str,
     cls_all   = _m_classify_all(stable_str, semi1_str, semi2_str, semi3_str, unstable_str)
     all_semis = _m_parse(semi1_str) | _m_parse(semi2_str) | _m_parse(semi3_str)
 
+    # Ghost saddle positions: patterns detected as BOTH stable AND semi/unstable
+    # (e.g. bistable F: x_F+ stable attractor + x_F- saddle coexist).
+    # Ghost node sits halfway between the pattern's level and the level below it.
+    _ghost_pos = {}
+    _ghost_sec_cls = {}
+    for _p in _M_PATS:
+        _ac = cls_all.get(_p, [])
+        if "stable" in _ac:
+            _sec = [c for c in _ac if c != "stable"]
+            if _sec:
+                _gx, _gy = _M_POS[_p]
+                _ghost_pos[_p] = (_gx, _gy - 0.5)
+                _ghost_sec_cls[_p] = min(_sec, key=lambda c: _M_RANK.get(c, 5))
+
     for a, b in combinations(_M_PATS, 2):
         if sum(x != y for x, y in zip(a, b)) == 1:
             xa, ya = _M_POS[a]; xb, yb = _M_POS[b]
@@ -534,11 +548,12 @@ def draw_morse_figure(title, stable_str, semi1_str, semi2_str, semi3_str,
             _cs in ("semi1", "semi2", "semi3") and _src.count("1") > _tgt.count("1")
         ))
         if _already: continue
-        _xs, _ys = _M_POS[_src]; _xt, _yt = _M_POS[_tgt]
+        _xs, _ys = _ghost_pos.get(_src, _M_POS[_src]); _xt, _yt = _M_POS[_tgt]
+        _shA = 4 if _src in _ghost_pos else _M_SHRINK.get(_cs, 5)
         ax.annotate("", xy=(_xt, _yt), xytext=(_xs, _ys),
                     arrowprops=dict(arrowstyle="-|>", color="#8e44ad",
                                     lw=0.9, mutation_scale=8, linestyle="dotted",
-                                    shrinkA=_M_SHRINK.get(_cs, 5),
+                                    shrinkA=_shA,
                                     shrinkB=_M_SHRINK.get(_ct, 5)), zorder=1.5)
 
     # ── 3. Heuristic: rank-based flow arrows (dark solid) ────────────────────
@@ -575,11 +590,14 @@ def draw_morse_figure(title, stable_str, semi1_str, semi2_str, semi3_str,
                 _col, _ls, _lw, _ms, _zo = "#8e44ad", "dotted", 0.8 + _conf * 0.4, 8, 2.5
             else:
                 _col, _ls, _lw, _ms, _zo = "#1a1a2e", "solid", 0.8 + _conf * 0.8, 12, 3
-            _xs, _ys = _M_POS[_src]; _xt, _yt = _M_POS[_tgt]
+            _use_ghost = (_er["dominant_type"] == "bistable" and _src in _ghost_pos)
+            _xs, _ys = _ghost_pos[_src] if _use_ghost else _M_POS[_src]
+            _xt, _yt = _M_POS[_tgt]
+            _shA = 4 if _use_ghost else _M_SHRINK.get(_cs, 5)
             ax.annotate("", xy=(_xt, _yt), xytext=(_xs, _ys),
                         arrowprops=dict(arrowstyle="-|>", color=_col, lw=_lw,
                                         mutation_scale=_ms, linestyle=_ls, alpha=_alpha,
-                                        shrinkA=_M_SHRINK.get(_cs, 5),
+                                        shrinkA=_shA,
                                         shrinkB=_M_SHRINK.get(_ct, 5)), zorder=_zo)
 
     for pat in _M_PATS:
@@ -607,6 +625,24 @@ def draw_morse_figure(title, stable_str, semi1_str, semi2_str, semi3_str,
             ax.text(x, y + 0.18, lbl, ha="center", va="bottom",
                     fontsize=5, color=col, zorder=6)
 
+    # ── Ghost saddle nodes + ghost→stable arrows ─────────────────────────────
+    _GHOST_COL = {"semi1": "#f1c40f", "semi2": "#e67e22",
+                  "semi3": "#e74c3c", "unstable": "#7f8c8d"}
+    for _gp, (_gx, _gy) in _ghost_pos.items():
+        _sc = _ghost_sec_cls.get(_gp, "semi1")
+        _gc = _GHOST_COL.get(_sc, "#f1c40f")
+        ax.scatter(_gx, _gy, s=110, marker='D', facecolor="none",
+                   edgecolor=_gc, linewidths=1.5, zorder=5)
+        ax.text(_gx + 0.18, _gy, _M_LABELS[_gp] + "⁻", ha="left", va="center",
+                fontsize=5, color=_gc, zorder=6)
+        # Arrow: ghost saddle → stable attractor (upward)
+        _mx, _my = _M_POS[_gp]
+        ax.annotate("", xy=(_mx, _my), xytext=(_gx, _gy),
+                    arrowprops=dict(arrowstyle="-|>", color="#8e44ad",
+                                    lw=0.9, mutation_scale=8, linestyle="dotted",
+                                    shrinkA=5, shrinkB=_M_SHRINK.get("stable", 15)),
+                    zorder=1.5)
+
     n_sm = sum(len(_m_parse(s)) for s in (semi1_str, semi2_str, semi3_str))
     info = (f"stable={len(_m_parse(stable_str))}  "
             f"semi₁={len(_m_parse(semi1_str))} semi₂={len(_m_parse(semi2_str))} "
@@ -618,6 +654,19 @@ def draw_morse_figure(title, stable_str, semi1_str, semi2_str, semi3_str,
     ax.set_title(title, fontsize=11, fontweight="bold", pad=8)
     ax.set_xlim(-3, 4); ax.set_ylim(-0.5, 6.5)
     ax.axis("off")
+
+    # ── Arrow legend ──────────────────────────────────────────────────────────
+    from matplotlib.lines import Line2D
+    from matplotlib.patches import Patch
+    _leg = [
+        Line2D([0],[0], color="#333333", lw=1.5, label="Heteroclinic flow"),
+        Line2D([0],[0], color="#777777", lw=1.0, linestyle="--", label="Semi↔semi (putative)"),
+        Line2D([0],[0], color="#8e44ad", lw=1.0, linestyle=":", label="Bistable manifold"),
+    ]
+    ax.legend(handles=_leg, loc="lower right", fontsize=6, handlelength=2.2,
+              framealpha=0.85, edgecolor="#cccccc", labelspacing=0.3,
+              handletextpad=0.5, borderpad=0.6)
+
     plt.tight_layout()
     return fig
 
