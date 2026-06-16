@@ -484,10 +484,81 @@ def draw_morse_figure(title, stable_str, semi1_str, semi2_str, semi3_str,
             xa, ya = _M_POS[a]; xb, yb = _M_POS[b]
             ax.plot([xa, xb], [ya, yb], color="#ececec", lw=0.3, zorder=0)
 
-    # ── Arrows: eigenvector-derived (if available) or heuristic fallback ─────────
+    # ── Arrows: heuristic baseline + eigenvector overlay ─────────────────────────
+    # The heuristic always runs first (complete coverage). Eigenvector-derived
+    # edges are then drawn on top — they visually override the heuristic for
+    # the connections they cover and add accurate bistable lower-arm arrows.
     _hetero = _HETERO_EDGES.get(circ_idx) if circ_idx is not None else None
+    _evec_pairs = set()   # (src, tgt) covered by eigenvectors at conf > 0.4
+    if _hetero is not None:
+        _evec_pairs = {(r["src"], r["tgt"])
+                       for _, r in _hetero[_hetero["confidence"] > 0.4].iterrows()
+                       if r["src"] in _M_POS and r["tgt"] in _M_POS}
+
+    # ── 1. Heuristic: semi↔semi putative arrows (gray dashed) ────────────────
+    for a, b in combinations(all_semis, 2):
+        if sum(x != y for x, y in zip(a, b)) != 1: continue
+        pa, pb = a.count("1"), b.count("1")
+        pairs = [(a, b)] if pa < pb else ([(b, a)] if pb < pa else [(a, b), (b, a)])
+        for src, tgt in pairs:
+            if (src, tgt) in _evec_pairs: continue   # will be drawn by eigenvec
+            xs, ys = _M_POS[src]; xt, yt = _M_POS[tgt]
+            sc = cls_dict.get(src, "absent"); tc = cls_dict.get(tgt, "absent")
+            ax.annotate("", xy=(xt, yt), xytext=(xs, ys),
+                        arrowprops=dict(arrowstyle="-|>", color="#777777",
+                                        lw=1.0, mutation_scale=9, linestyle="dashed",
+                                        shrinkA=_M_SHRINK.get(sc, 5),
+                                        shrinkB=_M_SHRINK.get(tc, 5)), zorder=1)
+
+    # ── 2. Heuristic: bistable separatrix arrows (purple dotted) ─────────────
+    _BISTABLE_BITS = {0, 2}
+    _all_det  = set(cls_dict.keys())
+    _attractor = {p for p, c in cls_dict.items()
+                  if c in ("stable", "semi1", "semi2", "semi3")}
+    for _a, _b in combinations(_M_PATS, 2):
+        if sum(x != y for x, y in zip(_a, _b)) != 1: continue
+        if _a not in _all_det or _b not in _all_det: continue
+        _bit = next(i for i in range(4) if _a[i] != _b[i])
+        if _bit not in _BISTABLE_BITS: continue
+        _src = _a if _a[_bit] == "1" else _b
+        _tgt = _b if _src == _a else _a
+        if _tgt not in _attractor: continue
+        if (_src, _tgt) in _evec_pairs: continue     # will be drawn by eigenvec
+        _cs = cls_dict.get(_src, "absent"); _ct = cls_dict.get(_tgt, "absent")
+        _rs = _M_RANK.get(_cs, -1); _rt = _M_RANK.get(_ct, -1)
+        _already = (_rs > _rt and not (
+            _cs in ("semi1", "semi2", "semi3") and _src.count("1") > _tgt.count("1")
+        ))
+        if _already: continue
+        _xs, _ys = _M_POS[_src]; _xt, _yt = _M_POS[_tgt]
+        ax.annotate("", xy=(_xt, _yt), xytext=(_xs, _ys),
+                    arrowprops=dict(arrowstyle="-|>", color="#8e44ad",
+                                    lw=0.9, mutation_scale=8, linestyle="dotted",
+                                    shrinkA=_M_SHRINK.get(_cs, 5),
+                                    shrinkB=_M_SHRINK.get(_ct, 5)), zorder=1.5)
+
+    # ── 3. Heuristic: rank-based flow arrows (dark solid) ────────────────────
+    for a, b in combinations(_M_PATS, 2):
+        if sum(x != y for x, y in zip(a, b)) != 1: continue
+        ca, cb = cls_dict.get(a), cls_dict.get(b)
+        if ca is None or cb is None: continue
+        ra, rb = _M_RANK.get(ca, 3), _M_RANK.get(cb, 3)
+        if ra > rb:   src, tgt = a, b
+        elif rb > ra: src, tgt = b, a
+        else: continue
+        if cls_dict.get(src) in ("semi1", "semi2", "semi3"):
+            if tgt.count("1") <= src.count("1"):
+                continue
+        if (src, tgt) in _evec_pairs: continue       # will be drawn by eigenvec
+        xs, ys = _M_POS[src]; xt, yt = _M_POS[tgt]
+        ax.annotate("", xy=(xt, yt), xytext=(xs, ys),
+                    arrowprops=dict(arrowstyle="-|>", color="#333333",
+                                    lw=1.4, mutation_scale=12,
+                                    shrinkA=_M_SHRINK.get(ca, 3),
+                                    shrinkB=_M_SHRINK.get(cb, 5)), zorder=2)
+
+    # ── 4. Eigenvector overlay: accurate arrows with confidence styling ───────
     if _hetero is not None and len(_hetero) > 0:
-        # Eigenvector-derived edges — draw all edges with confidence > 0.4
         for _, _er in _hetero[_hetero["confidence"] > 0.4].iterrows():
             _src, _tgt = _er["src"], _er["tgt"]
             if _src not in _M_POS or _tgt not in _M_POS:
@@ -497,70 +568,15 @@ def draw_morse_figure(title, stable_str, semi1_str, semi2_str, semi3_str,
             _conf = float(_er["confidence"])
             _alpha = min(1.0, 0.4 + _conf * 0.6)
             if _er["dominant_type"] == "bistable":
-                _col, _ls, _lw, _ms, _zo = "#8e44ad", "dotted", 0.8 + _conf * 0.4, 8, 1.5
+                _col, _ls, _lw, _ms, _zo = "#8e44ad", "dotted", 0.8 + _conf * 0.4, 8, 2.5
             else:
-                _col, _ls, _lw, _ms, _zo = "#333333", "solid", 0.8 + _conf * 0.8, 12, 2
+                _col, _ls, _lw, _ms, _zo = "#1a1a2e", "solid", 0.8 + _conf * 0.8, 12, 3
             _xs, _ys = _M_POS[_src]; _xt, _yt = _M_POS[_tgt]
             ax.annotate("", xy=(_xt, _yt), xytext=(_xs, _ys),
                         arrowprops=dict(arrowstyle="-|>", color=_col, lw=_lw,
                                         mutation_scale=_ms, linestyle=_ls, alpha=_alpha,
                                         shrinkA=_M_SHRINK.get(_cs, 5),
                                         shrinkB=_M_SHRINK.get(_ct, 5)), zorder=_zo)
-    else:
-        # Heuristic fallback ────────────────────────────────────────────────────
-        for a, b in combinations(all_semis, 2):
-            if sum(x != y for x, y in zip(a, b)) != 1: continue
-            pa, pb = a.count("1"), b.count("1")
-            pairs = [(a, b)] if pa < pb else ([(b, a)] if pb < pa else [(a, b), (b, a)])
-            for src, tgt in pairs:
-                xs, ys = _M_POS[src]; xt, yt = _M_POS[tgt]
-                sc = cls_dict.get(src, "absent"); tc = cls_dict.get(tgt, "absent")
-                ax.annotate("", xy=(xt, yt), xytext=(xs, ys),
-                            arrowprops=dict(arrowstyle="-|>", color="#777777",
-                                            lw=1.0, mutation_scale=9, linestyle="dashed",
-                                            shrinkA=_M_SHRINK.get(sc, 5),
-                                            shrinkB=_M_SHRINK.get(tc, 5)), zorder=1)
-        _BISTABLE_BITS = {0, 2}
-        _all_det  = set(cls_dict.keys())
-        _attractor = {p for p, c in cls_dict.items()
-                      if c in ("stable", "semi1", "semi2", "semi3")}
-        for _a, _b in combinations(_M_PATS, 2):
-            if sum(x != y for x, y in zip(_a, _b)) != 1: continue
-            if _a not in _all_det or _b not in _all_det: continue
-            _bit = next(i for i in range(4) if _a[i] != _b[i])
-            if _bit not in _BISTABLE_BITS: continue
-            _src = _a if _a[_bit] == "1" else _b
-            _tgt = _b if _src == _a else _a
-            if _tgt not in _attractor: continue
-            _cs = cls_dict.get(_src, "absent"); _ct = cls_dict.get(_tgt, "absent")
-            _rs = _M_RANK.get(_cs, -1); _rt = _M_RANK.get(_ct, -1)
-            _already = (_rs > _rt and not (
-                _cs in ("semi1", "semi2", "semi3") and _src.count("1") > _tgt.count("1")
-            ))
-            if _already: continue
-            _xs, _ys = _M_POS[_src]; _xt, _yt = _M_POS[_tgt]
-            ax.annotate("", xy=(_xt, _yt), xytext=(_xs, _ys),
-                        arrowprops=dict(arrowstyle="-|>", color="#8e44ad",
-                                        lw=0.9, mutation_scale=8, linestyle="dotted",
-                                        shrinkA=_M_SHRINK.get(_cs, 5),
-                                        shrinkB=_M_SHRINK.get(_ct, 5)), zorder=1.5)
-        for a, b in combinations(_M_PATS, 2):
-            if sum(x != y for x, y in zip(a, b)) != 1: continue
-            ca, cb = cls_dict.get(a), cls_dict.get(b)
-            if ca is None or cb is None: continue
-            ra, rb = _M_RANK.get(ca, 3), _M_RANK.get(cb, 3)
-            if ra > rb:   src, tgt = a, b
-            elif rb > ra: src, tgt = b, a
-            else: continue
-            if cls_dict.get(src) in ("semi1", "semi2", "semi3"):
-                if tgt.count("1") <= src.count("1"):
-                    continue
-            xs, ys = _M_POS[src]; xt, yt = _M_POS[tgt]
-            ax.annotate("", xy=(xt, yt), xytext=(xs, ys),
-                        arrowprops=dict(arrowstyle="-|>", color="#333333",
-                                        lw=1.4, mutation_scale=12,
-                                        shrinkA=_M_SHRINK.get(ca, 3),
-                                        shrinkB=_M_SHRINK.get(cb, 5)), zorder=2)
 
     for pat in _M_PATS:
         x, y = _M_POS[pat]
