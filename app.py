@@ -595,6 +595,8 @@ def draw_morse_figure(title, stable_str, semi1_str, semi2_str, semi3_str,
                 continue
             _cs = cls_dict.get(_src, "absent")
             _ct = cls_dict.get(_tgt, "absent")
+            if _cs == "absent" or _ct == "absent":
+                continue
             _conf = float(_er["confidence"])
             _alpha = min(1.0, 0.4 + _conf * 0.6)
             if _er["dominant_type"] == "bistable":
