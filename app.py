@@ -1545,6 +1545,18 @@ encounters TB or FM as **saddle** states (they appear much more often as stable 
 so the Monte Carlo misses their outgoing connections. The boundary analysis adds these edges
 with analytically computed confidence values, shown as **dashed green** arrows in the
 Phase Atlas.
+
+**Universal law — FMT always recruits B:** the strongest result from this analysis is that
+the F+M+T state invariably gives way to the full F+M+T+B state, across **all 256 circuit
+topologies and all parameter values**. The reason is a single inequality:
+
+> λ_B at FMT face = p_TB · T_FMT − r_B ≥ 2.5 × 1.90 − 1.5 = **3.24 > 0**
+
+On any FMT face, T is always sustained by its own self-activation (p_TT), so T_FMT ≥ T* ≈ 1.90
+regardless of which cross-group edges are present. The T→B rate p_TB = 2.5 is a fixed kinetic
+constant (not a free parameter), so the B invasion eigenvalue is bounded away from zero for
+every parameter draw. Additional F→B or M→B edges only increase the eigenvalue further.
+In short: **once F, M, and T are simultaneously active, B is guaranteed to join**.
         """)
 
         st.markdown("---")
