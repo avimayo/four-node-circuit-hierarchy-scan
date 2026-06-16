@@ -257,6 +257,7 @@ def run_analysis(circuits_path: str, orig_csv_path: str,
     F_FM, M_FM = fp["FM_stable"]
     T_TB, B_TB = fp["TB_stable"]
     F_star      = fp["F_stable"]
+    T_stable_val = fp["T_stable"]  # noqa: F841 — used in 1D edge comment
 
     # Pre-draw Uniform[0,5] columns for each free parameter used
     # We do vectorised MC: draw all N_MC samples once per parameter index used.
@@ -382,6 +383,14 @@ def run_analysis(circuits_path: str, orig_csv_path: str,
                 "hamming":       h,
             })
 
+        # ---- 1D axis universal connections (exact, no MC needed) ----
+        # F⁻ → ∅: F bistable saddle always flows to null state
+        add_edge(F_ST, EMPTY, 1.0)
+        # T⁻ → ∅: T bistable saddle always flows to null state
+        add_edge(T_ST, EMPTY, 1.0)
+        # T* → TB: B always invades T* (λ_B = ptb·T* − rb ≈ 3.24 > 0 for all circuits)
+        add_edge(T_ST, TB_ST, 1.0)
+
         if conf_TB_to_FTB > 0:
             add_edge(TB_ST, FTB_ST, conf_TB_to_FTB)
             n_tb_f += 1
@@ -433,9 +442,11 @@ def run_analysis(circuits_path: str, orig_csv_path: str,
     df_new["src"]  = df_new["src"].str.zfill(4)
     df_new["tgt"]  = df_new["tgt"].str.zfill(4)
 
+    # Concatenate: boundary_analytic rows come LAST so keep="last" lets them
+    # override MC rows that share the same (circuit_idx, src, tgt).
     df_aug = pd.concat([df_orig, df_new], ignore_index=True)
     before = len(df_aug)
-    df_aug = df_aug.drop_duplicates(subset=["circuit_idx", "src", "tgt"], keep="first")
+    df_aug = df_aug.drop_duplicates(subset=["circuit_idx", "src", "tgt"], keep="last")
     after = len(df_aug)
     print(f"\n  Original edges: {len(df_orig)}")
     print(f"  New boundary edges: {len(df_new)}")
