@@ -720,7 +720,7 @@ def draw_morse_figure(title, stable_str, semi1_str, semi2_str, semi3_str,
 @st.cache_data
 def load_heteroclinic_edges():
     # prefer the augmented file (adds analytically-derived boundary edges)
-    for fname in ("heteroclinic_edges_augmented.csv", "heteroclinic_edges.csv"):
+    for fname in ("hetero_aug.csv", "heteroclinic_edges_augmented.csv", "heteroclinic_edges.csv"):
         p = BASE / fname
         if p.exists() and p.stat().st_size > 0:
             df = pd.read_csv(p, dtype={"src": str, "tgt": str})
