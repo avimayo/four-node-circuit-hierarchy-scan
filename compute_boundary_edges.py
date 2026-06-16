@@ -14,13 +14,27 @@ Fixed points analysed here:
   * F axis   (M=T=B=0): F_saddle, F_stable
   * T axis   (F=M=B=0): T_saddle, T_stable
 
-Connections added:
+2D→3D connections (already in v1):
   TB_stable  → FTB  : λ_F > 0  (needs Ptf, Pbf edges)
   TB_stable  → MTB  : λ_M > 0  (needs Ptm, Pbm edges)
   FM_stable  → FMT  : λ_T > 0  (needs Pft, Pmt edges)
   FM_stable  → FMB  : λ_B > 0  (needs Pfb, Pmb edges)
   F_stable   → FT   : λ_T > 0  (needs Pft edge)
   F_stable   → FB   : λ_B > 0  (needs Pfb edge)
+
+3D→4D connections (new in v2):
+  FMT_stable → FMTB : λ_B = ptb·T_FMT - rb ≥ 3.245 > 0  UNIVERSAL (all 256 circuits)
+  FMB_stable → FMTB : λ_T = Pft·pft·F_FMB + Pmt·pmt·M_FMB - rt  (needs Pft or Pmt)
+  FTB_stable → FMTB : λ_M = pfm·F_FTB + Ptm·ptm·T_FTB + Pbm·pbm·B_FTB - rm
+                       (F_FTB barely above threshold when ptf or pbf present; ~99%)
+  MTB_stable → FMTB : λ_F = pmf·M_MTB + Ptf·pft·T_MTB + Pbf·pbf·B_MTB - rf
+                       (requires T,B→M activation; complex)
+
+Rationale for FMT→FMTB universality:
+  On any FMT face (B=0), T is always sustained by ptt (self-activation): T_FMT ≥ T* = 1.898.
+  B invasion eigenvalue: λ_B = ptb·T_FMT + Pfb·pfb·F_FMT + Pmb·pmb·M_FMT - rb
+  Minimum (no cross edges to B): ptb·T* - rb = 2.5·1.898 - 1.5 = 3.245 > 0 always.
+  ptb=2.5 is the fixed within-TB T→B rate (always present).
 
 Each confidence is estimated by Monte Carlo (200 000 draws from Uniform[0,5]).
 
@@ -272,12 +286,15 @@ def run_analysis(circuits_path: str, orig_csv_path: str,
 
     rows = []
 
-    n_tb_f = 0   # circuits gaining TB→FTB
-    n_tb_m = 0   # circuits gaining TB→MTB
-    n_fm_t = 0   # circuits gaining FM→FMT
-    n_fm_b = 0   # circuits gaining FM→FMB
-    n_f_t  = 0   # circuits gaining F→FT
-    n_f_b  = 0   # circuits gaining F→FB
+    n_tb_f  = 0   # circuits gaining TB→FTB
+    n_tb_m  = 0   # circuits gaining TB→MTB
+    n_fm_t  = 0   # circuits gaining FM→FMT
+    n_fm_b  = 0   # circuits gaining FM→FMB
+    n_f_t   = 0   # circuits gaining F→FT
+    n_f_b   = 0   # circuits gaining F→FB
+    n_fmt_b = 0   # circuits gaining FMT→FMTB (should be 256)
+    n_fmb_t = 0   # circuits gaining FMB→FMTB
+    n_ftb_m = 0   # circuits gaining FTB→FMTB
 
     for circ_idx_0, ev in enumerate(circuits):
         circ_idx = circ_idx_0 + 1   # 1-based
@@ -366,6 +383,49 @@ def run_analysis(circuits_path: str, orig_csv_path: str,
         if not has_f_b:
             conf_F_to_FB = 0.0
 
+        # ---- 3D face → FMTB invasions ----
+
+        # FMT(1110) → FMTB(1111): B ALWAYS invades, universal for all circuits.
+        # On FMT face, T is always present (ptt self-activation sustains T* ≥ 1.898).
+        # λ_B = ptb·T_FMT + Pfb·pfb·F_FMT + Pmb·pmb·M_FMT - rb
+        # Minimum (no cross edges to B): ptb·T* - rb = 2.5·1.898 - 1.5 = 3.245 > 0.
+        # Additional Pfb·pfb and Pmb·pmb terms are ≥ 0 → λ_B always positive.
+        conf_FMT_to_FMTB = 1.0
+
+        # FMB(1101) → FMTB(1111): T invades when F or M activate T.
+        # On FMB face, F_FMB ≥ F_FM and M_FMB ≥ M_FM (B adds activation).
+        # λ_T = Pft·pft·F_FMB + Pmt·pmt·M_FMB - rt
+        # Use FM_stable as conservative lower bound: λ_T ≥ Pft·pft·F_FM + Pmt·pmt·M_FM - rt
+        # (same formula as FM→FMT, so same confidence estimate, only if pfb/pmb also present)
+        lam_T_FMB = Pft_col * F_FM + Pmt_col * M_FM - rt
+        has_fmb = ev[IDX_PFB] or ev[IDX_PMB]   # FMB face requires B sustained by F or M
+        has_t_inv_fmb = ev[IDX_PFT] or ev[IDX_PMT]
+        if has_fmb and has_t_inv_fmb:
+            conf_FMB_to_FMTB = float(np.mean(lam_T_FMB > 0))
+        else:
+            conf_FMB_to_FMTB = 0.0
+
+        # FTB(1011) → FMTB(1111): M invades via pfm·F_FTB + (cross terms) - rm.
+        # F_FTB is parameter-dependent. Conservative lower bound F_FTB ≥ F_stable.
+        # With cross edges ptf or pbf, F_FTB > F_stable → pushes λ_M positive.
+        # λ_M ≥ pfm·F_FTB + Ptm·ptm·T_FTB + Pbm·pbm·B_FTB - rm
+        # Use conservative proxy: F_FTB = F_stable, T_FTB = T_TB, B_FTB = B_TB
+        # (actual values are higher when ptf/pbf/pmt/pmb are active)
+        F_star = fp["F_stable"]
+        T_TB_val, B_TB_val = fp["TB_stable"]
+        lam_M_FTB = (pfm * F_star          # F contribution (lower bound)
+                     + Ptm_col * T_TB_val   # T→M cross-group (T_FTB ≥ T_TB)
+                     + Pbm_col * B_TB_val   # B→M cross-group (B_FTB ≥ B_TB)
+                     - rm)
+        # FTB face requires B to be sustained (needs ptb·T or Pfb·pfb to sustain B)
+        # B is sustained on FTB face when TB* exists (always) plus F activation.
+        # Require at least TB face exists (always) — FTB requires F also active.
+        # FTB face is present when F can sustain itself — which it can via pff.
+        has_ftb_m = True   # F always sustains on FTB face (pff > 0 ensures F_FTB ≥ F*)
+        conf_FTB_to_FMTB = float(np.mean(lam_M_FTB > 0))
+        if conf_FTB_to_FMTB == 0.0:
+            has_ftb_m = False
+
         # ---- Accumulate edges ----
         def add_edge(src, tgt, conf):
             if conf <= 0.0:
@@ -410,6 +470,16 @@ def run_analysis(circuits_path: str, orig_csv_path: str,
             add_edge(F_ST, FB_ST, conf_F_to_FB)
             n_f_b += 1
 
+        # 3D → FMTB
+        add_edge(FMT_ST, FMTB, conf_FMT_to_FMTB)   # universal
+        n_fmt_b += 1
+        if conf_FMB_to_FMTB > 0:
+            add_edge(FMB_ST, FMTB, conf_FMB_to_FMTB)
+            n_fmb_t += 1
+        if conf_FTB_to_FMTB > 0:
+            add_edge(FTB_ST, FMTB, conf_FTB_to_FMTB)
+            n_ftb_m += 1
+
     # -----------------------------------------------------------------------
     # Save boundary_edges.csv
     # -----------------------------------------------------------------------
@@ -430,6 +500,9 @@ def run_analysis(circuits_path: str, orig_csv_path: str,
     print(f"  Circuits with FM→FMB (λ_B>0 at FM face): {n_fm_b}/256")
     print(f"  Circuits with F→FT   (λ_T>0 at F axis):  {n_f_t}/256")
     print(f"  Circuits with F→FB   (λ_B>0 at F axis):  {n_f_b}/256")
+    print(f"  Circuits with FMT→FMTB (universal):      {n_fmt_b}/256")
+    print(f"  Circuits with FMB→FMTB (λ_T>0 at FMB):  {n_fmb_t}/256")
+    print(f"  Circuits with FTB→FMTB (λ_M>0 at FTB):  {n_ftb_m}/256")
     print(f"  Total new edges added: {len(df_new)}")
 
     # -----------------------------------------------------------------------
