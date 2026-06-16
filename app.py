@@ -1954,6 +1954,14 @@ with tab_atlas:
                 )
                 st.pyplot(_fig, use_container_width=False)
                 plt.close(_fig)
+                # Debug: edge count
+                _dbg_h = _HETERO_EDGES.get(_sel_circ)
+                if _dbg_h is not None:
+                    _dbg_ba = int((_dbg_h["dominant_type"] == "boundary_analytic").sum())
+                    st.caption(f"debug — {len(_dbg_h)} edges loaded for circ {_sel_circ} "
+                               f"({_dbg_ba} boundary_analytic)")
+                else:
+                    st.caption(f"debug — no edges for circ {_sel_circ}")
 
         with _a_bmarks:
             st.caption("Bookmarks")
