@@ -475,7 +475,8 @@ _M_RING = {
 }
 
 def draw_morse_figure(title, stable_str, semi1_str, semi2_str, semi3_str,
-                      unstable_str, freq_pct=None, figsize=(5.5, 5.0), circ_idx=None):
+                      unstable_str, freq_pct=None, figsize=(5.5, 5.0), circ_idx=None,
+                      analytic_only=False):
     fig, ax = plt.subplots(figsize=figsize)
     fig.patch.set_facecolor("#fafafa")
     ax.set_facecolor("#fafafa")
@@ -508,6 +509,8 @@ def draw_morse_figure(title, stable_str, semi1_str, semi2_str, semi3_str,
     # The heuristic always runs first (complete coverage). Eigenvector-derived
     # edges are then drawn on top — they visually override the heuristic for
     # the connections they cover and add accurate bistable lower-arm arrows.
+    # When analytic_only=True, steps 1–3 are skipped and step 4 is filtered to
+    # boundary_analytic edges only.
     _hetero = _HETERO_EDGES.get(circ_idx) if circ_idx is not None else None
     _evec_pairs = set()   # (src, tgt) covered by eigenvectors at conf > 0.4
     if _hetero is not None:
@@ -516,7 +519,7 @@ def draw_morse_figure(title, stable_str, semi1_str, semi2_str, semi3_str,
                        if r["src"] in _M_POS and r["tgt"] in _M_POS}
 
     # ── 1. Heuristic: semi↔semi putative arrows (gray dashed) ────────────────
-    for a, b in combinations(all_semis, 2):
+    for a, b in combinations(all_semis, 2) if not analytic_only else []:
         if sum(x != y for x, y in zip(a, b)) != 1: continue
         pa, pb = a.count("1"), b.count("1")
         pairs = [(a, b)] if pa < pb else ([(b, a)] if pb < pa else [(a, b), (b, a)])
@@ -536,7 +539,7 @@ def draw_morse_figure(title, stable_str, semi1_str, semi2_str, semi3_str,
     _all_det  = set(cls_dict.keys())
     _attractor = {p for p, c in cls_dict.items()
                   if c in ("stable", "semi1", "semi2", "semi3")}
-    for _a, _b in combinations(_M_PATS, 2):
+    for _a, _b in (combinations(_M_PATS, 2) if not analytic_only else []):
         if sum(x != y for x, y in zip(_a, _b)) != 1: continue
         if _a not in _all_det or _b not in _all_det: continue
         _bit = next(i for i in range(4) if _a[i] != _b[i])
@@ -562,7 +565,7 @@ def draw_morse_figure(title, stable_str, semi1_str, semi2_str, semi3_str,
         _drawn_out.add(_src)
 
     # ── 3. Heuristic: rank-based flow arrows (dark solid) ────────────────────
-    for a, b in combinations(_M_PATS, 2):
+    for a, b in (combinations(_M_PATS, 2) if not analytic_only else []):
         if sum(x != y for x, y in zip(a, b)) != 1: continue
         ca, cb = cls_dict.get(a), cls_dict.get(b)
         if ca is None or cb is None: continue
@@ -584,7 +587,9 @@ def draw_morse_figure(title, stable_str, semi1_str, semi2_str, semi3_str,
 
     # ── 4. Eigenvector overlay: accurate arrows with confidence styling ───────
     if _hetero is not None and len(_hetero) > 0:
-        for _, _er in _hetero[_hetero["confidence"] > 0.4].iterrows():
+        _hetero_view = (_hetero[_hetero["dominant_type"] == "boundary_analytic"]
+                        if analytic_only else _hetero)
+        for _, _er in _hetero_view[_hetero_view["confidence"] > 0.4].iterrows():
             _src, _tgt = _er["src"], _er["tgt"]
             if _src not in _M_POS or _tgt not in _M_POS:
                 continue
@@ -611,8 +616,10 @@ def draw_morse_figure(title, stable_str, semi1_str, semi2_str, semi3_str,
             _drawn_out.add(_src)
 
     # ── 5. Orphan rescue: non-stable detected nodes with no outgoing arrow ───────
-    for _op in sorted(p for p, c in cls_dict.items()
-                      if c != "stable" and p not in _drawn_out):
+    # Skipped in analytic_only mode — only proven edges should appear.
+    for _op in (sorted(p for p, c in cls_dict.items()
+                       if c != "stable" and p not in _drawn_out)
+                if not analytic_only else []):
         _oc = cls_dict.get(_op, "absent")
         _ox, _oy = _M_POS[_op]
         _cands = sorted(
@@ -1877,6 +1884,13 @@ with tab_atlas:
                 key="atlas_rank",
             )
 
+            _analytic_only = st.checkbox(
+                "Analytic arrows only",
+                key="atlas_analytic_only",
+                help="Show only arrows derived from exact invasion-eigenvalue analysis "
+                     "(green dashed). Hides heuristic and MC-based arrows.",
+            )
+
             # Legend
             st.markdown("---")
             _leg_items = [
@@ -1933,6 +1947,7 @@ with tab_atlas:
                     freq_pct=float(_r["freq_pct"]),
                     figsize=(7, 6),
                     circ_idx=_sel_circ,
+                    analytic_only=_analytic_only,
                 )
                 st.pyplot(_fig, use_container_width=False)
                 plt.close(_fig)
