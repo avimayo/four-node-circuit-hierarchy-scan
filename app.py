@@ -514,9 +514,14 @@ def draw_morse_figure(title, stable_str, semi1_str, semi2_str, semi3_str,
     _hetero = _HETERO_EDGES.get(circ_idx) if circ_idx is not None else None
     _evec_pairs = set()   # (src, tgt) covered by eigenvectors at conf > 0.4
     if _hetero is not None:
+        # Exclude edges from stable non-bistable attractors: those edges are valid
+        # in other phase types but not here, and keeping them in _evec_pairs would
+        # cause the reverse-direction check to suppress correct heuristic arrows.
         _evec_pairs = {(r["src"], r["tgt"])
                        for _, r in _hetero[_hetero["confidence"] > 0.4].iterrows()
-                       if r["src"] in _M_POS and r["tgt"] in _M_POS}
+                       if r["src"] in _M_POS and r["tgt"] in _M_POS
+                       and not (cls_dict.get(r["src"]) == "stable"
+                                and r["src"] not in _ghost_pos)}
 
     # ── 1. Heuristic: semi↔semi putative arrows (gray dashed) ────────────────
     for a, b in combinations(all_semis, 2) if not analytic_only else []:
@@ -547,6 +552,9 @@ def draw_morse_figure(title, stable_str, semi1_str, semi2_str, semi3_str,
         _src = _a if _a[_bit] == "1" else _b
         _tgt = _b if _src == _a else _a
         if _tgt not in _attractor: continue
+        # Stable non-bistable attractors are sinks — skip if heuristic assigns them as source
+        if cls_dict.get(_src, "absent") == "stable" and _src not in _ghost_pos:
+            continue
         if (_src, _tgt) in _evec_pairs or (_tgt, _src) in _evec_pairs: continue     # eigenvec covers this pair
         _cs = cls_dict.get(_src, "absent"); _ct = cls_dict.get(_tgt, "absent")
         _rs = _M_RANK.get(_cs, -1); _rt = _M_RANK.get(_ct, -1)
