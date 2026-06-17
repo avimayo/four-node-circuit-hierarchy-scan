@@ -644,6 +644,7 @@ def draw_morse_figure(title, stable_str, semi1_str, semi2_str, semi3_str,
                 if not analytic_only else []):
         _oc = cls_dict.get(_op, "absent")
         _ox, _oy = _M_POS[_op]
+        _op_n = _op.count("1")
         _cands = sorted(
             [(p, _M_RANK.get(cls_dict.get(p, "absent"), 5))
              for p in _M_PATS
@@ -654,6 +655,12 @@ def draw_morse_figure(title, stable_str, semi1_str, semi2_str, semi3_str,
         )
         if not _cands:
             continue
+        # For semi sources, prefer candidates with more active cells (invasion direction).
+        # Unstable sources can flow toward fewer cells (extinction basin) — no preference.
+        if _oc in ("semi1", "semi2", "semi3"):
+            _up = [c for c in _cands if c[0].count("1") > _op_n]
+            if _up:
+                _cands = _up
         _best = _cands[0][0]
         _tx, _ty = _M_POS[_best]
         _bc = cls_dict.get(_best, "absent")
@@ -689,6 +696,43 @@ def draw_morse_figure(title, stable_str, semi1_str, semi2_str, semi3_str,
             ax.text(x, y + 0.18, lbl, ha="center", va="bottom",
                     fontsize=5, color=col, zorder=6)
 
+    # ── 6. Ghost orphan rescue: add lower-arm arrow when steps 2/4 drew nothing ──
+    # Every ghost already has an upward connector to its stable node (drawn below).
+    # This step adds the downward arrow toward the lower-activation attractor for
+    # ghosts that lacked a bistable/boundary_analytic edge in hetero_aug and whose
+    # BISTABLE_BIT neighbors were absent (common for 1001, 1101, 1111 patterns).
+    for _gp in sorted(_ghost_pos):
+        if _gp in _ghost_has_arrows:
+            continue
+        _gx, _gy = _ghost_pos[_gp]
+        _gn = _gp.count("1")
+        # Adjacent stable patterns with fewer cells = lower bistable arm
+        _adj_stable_less = sorted(
+            [p for p in _M_PATS
+             if sum(x != y for x, y in zip(p, _gp)) == 1
+             and cls_dict.get(p) == "stable"
+             and p.count("1") < _gn],
+            key=lambda p: p.count("1")
+        )
+        # Fallback: any adjacent stable pattern (covers 1111 ghosts)
+        _adj_stable_any = sorted(
+            [p for p in _M_PATS
+             if sum(x != y for x, y in zip(p, _gp)) == 1
+             and cls_dict.get(p) == "stable"],
+            key=lambda p: abs(p.count("1") - (_gn - 1))
+        )
+        _rescue = (_adj_stable_less or _adj_stable_any)
+        if not _rescue:
+            continue
+        _rt = _rescue[0]
+        _rtx, _rty = _M_POS[_rt]
+        ax.annotate("", xy=(_rtx, _rty), xytext=(_gx, _gy),
+                    arrowprops=dict(arrowstyle="-|>", color="#8e44ad",
+                                    lw=0.7, mutation_scale=7, linestyle="dotted",
+                                    shrinkA=4,
+                                    shrinkB=_M_SHRINK.get("stable", 15)), zorder=1.5)
+        _ghost_has_arrows.add(_gp)
+
     # ── Ghost saddle nodes + ghost→stable arrows ─────────────────────────────
     _GHOST_COL = {"semi1": "#f1c40f", "semi2": "#e67e22",
                   "semi3": "#e74c3c", "unstable": "#7f8c8d"}
@@ -699,7 +743,7 @@ def draw_morse_figure(title, stable_str, semi1_str, semi2_str, semi3_str,
                    edgecolor=_gc, linewidths=1.5, zorder=5)
         ax.text(_gx + 0.18, _gy, _M_LABELS[_gp] + "⁻", ha="left", va="center",
                 fontsize=5, color=_gc, zorder=6)
-        # Arrow: ghost saddle → stable attractor (upward)
+        # Arrow: ghost saddle → stable attractor (upward, always drawn)
         _mx, _my = _M_POS[_gp]
         ax.annotate("", xy=(_mx, _my), xytext=(_gx, _gy),
                     arrowprops=dict(arrowstyle="-|>", color="#8e44ad",
