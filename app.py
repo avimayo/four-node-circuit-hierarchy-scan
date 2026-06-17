@@ -597,6 +597,11 @@ def draw_morse_figure(title, stable_str, semi1_str, semi2_str, semi3_str,
             _ct = cls_dict.get(_tgt, "absent")
             if _cs == "absent" or _ct == "absent":
                 continue
+            # A non-bistable stable attractor has no outgoing flow —
+            # skip edges whose source is stable but lacks a ghost saddle.
+            # (Bistable stable nodes have a ghost in _ghost_pos and are fine.)
+            if _cs == "stable" and _src not in _ghost_pos:
+                continue
             _conf = float(_er["confidence"])
             _alpha = min(1.0, 0.4 + _conf * 0.6)
             if _er["dominant_type"] == "bistable":
