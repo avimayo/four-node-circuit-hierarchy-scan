@@ -552,8 +552,9 @@ def draw_morse_figure(title, stable_str, semi1_str, semi2_str, semi3_str,
         _src = _a if _a[_bit] == "1" else _b
         _tgt = _b if _src == _a else _a
         if _tgt not in _attractor: continue
-        # Stable non-bistable attractors are sinks — skip if heuristic assigns them as source
-        if cls_dict.get(_src, "absent") == "stable" and _src not in _ghost_pos:
+        # Bistable separatrix arrows only make sense FROM a ghost saddle node.
+        # A non-ghost source (semi or stable-only) has no bistable separator structure.
+        if _src not in _ghost_pos:
             continue
         if (_src, _tgt) in _evec_pairs or (_tgt, _src) in _evec_pairs: continue     # eigenvec covers this pair
         _cs = cls_dict.get(_src, "absent"); _ct = cls_dict.get(_tgt, "absent")
@@ -609,6 +610,10 @@ def draw_morse_figure(title, stable_str, semi1_str, semi2_str, semi3_str,
             # skip edges whose source is stable but lacks a ghost saddle.
             # (Bistable stable nodes have a ghost in _ghost_pos and are fine.)
             if _cs == "stable" and _src not in _ghost_pos:
+                continue
+            # Bistable and invasion edges require a ghost saddle at the source —
+            # they encode the ghost's flow direction and are meaningless without one.
+            if _er["dominant_type"] in ("bistable", "invasion") and _src not in _ghost_pos:
                 continue
             _conf = float(_er["confidence"])
             _alpha = min(1.0, 0.4 + _conf * 0.6)
