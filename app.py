@@ -524,7 +524,7 @@ def draw_morse_figure(title, stable_str, semi1_str, semi2_str, semi3_str,
         pa, pb = a.count("1"), b.count("1")
         pairs = [(a, b)] if pa < pb else ([(b, a)] if pb < pa else [(a, b), (b, a)])
         for src, tgt in pairs:
-            if (src, tgt) in _evec_pairs: continue   # will be drawn by eigenvec
+            if (src, tgt) in _evec_pairs or (tgt, src) in _evec_pairs: continue   # eigenvec covers this pair
             xs, ys = _M_POS[src]; xt, yt = _M_POS[tgt]
             sc = cls_dict.get(src, "absent"); tc = cls_dict.get(tgt, "absent")
             ax.annotate("", xy=(xt, yt), xytext=(xs, ys),
@@ -547,7 +547,7 @@ def draw_morse_figure(title, stable_str, semi1_str, semi2_str, semi3_str,
         _src = _a if _a[_bit] == "1" else _b
         _tgt = _b if _src == _a else _a
         if _tgt not in _attractor: continue
-        if (_src, _tgt) in _evec_pairs: continue     # will be drawn by eigenvec
+        if (_src, _tgt) in _evec_pairs or (_tgt, _src) in _evec_pairs: continue     # eigenvec covers this pair
         _cs = cls_dict.get(_src, "absent"); _ct = cls_dict.get(_tgt, "absent")
         _rs = _M_RANK.get(_cs, -1); _rt = _M_RANK.get(_ct, -1)
         _already = (_rs > _rt and not (
@@ -576,7 +576,7 @@ def draw_morse_figure(title, stable_str, semi1_str, semi2_str, semi3_str,
         if cls_dict.get(src) in ("semi1", "semi2", "semi3"):
             if tgt.count("1") <= src.count("1"):
                 continue
-        if (src, tgt) in _evec_pairs: continue       # will be drawn by eigenvec
+        if (src, tgt) in _evec_pairs or (tgt, src) in _evec_pairs: continue       # eigenvec covers this pair
         xs, ys = _M_POS[src]; xt, yt = _M_POS[tgt]
         ax.annotate("", xy=(xt, yt), xytext=(xs, ys),
                     arrowprops=dict(arrowstyle="-|>", color="#333333",
