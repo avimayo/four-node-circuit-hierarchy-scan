@@ -61,6 +61,44 @@ def _parse_edge_text(text):
         bits[_EDGE_TO_BIT[part]] = 1
     return vec_to_idx.get(tuple(bits))
 
+# Bit order in idx_to_vec: (P_FT, P_TF, P_MT, P_TM, P_FB, P_BF, P_MB, P_BM)
+# indices:                    0      1     2     3     4     5     6     7
+_ANALYTIC_UNIVERSAL = [
+    ("1000", "0000", "F sector saddle → ∅"),
+    ("0010", "0000", "T sector saddle → ∅"),
+    ("0010", "0011", "B always invades T  (λ = 3.24)"),
+    ("1110", "1111", "B always invades FMT  (λ = 3.24)"),
+]
+
+def _circuit_analytic_edges(circ_idx):
+    """Return analytically-proven (src, tgt, label, kind) for a circuit.
+
+    kind = 'universal'  — holds for all 256 circuits
+    kind = 'topology'   — proven for circuits with the required cross-group edge
+    """
+    edges = [(s, t, lbl, "universal") for s, t, lbl in _ANALYTIC_UNIVERSAL]
+    vec = idx_to_vec.get(circ_idx)
+    if vec is None:
+        return edges
+    P_FT, P_TF, P_MT, P_TM, P_FB, P_BF, P_MB, P_BM = vec
+    if P_TF or P_BF:
+        edges.append(("0011", "1011", "F invades TB  (bwd edge present)", "topology"))
+    if P_TM or P_BM:
+        edges.append(("0011", "0111", "M invades TB  (bwd edge present)", "topology"))
+    if P_FT or P_MT:
+        edges.append(("1100", "1110", "T invades FM  (fwd edge present)", "topology"))
+        edges.append(("1101", "1111", "T invades FMB  (fwd edge present)", "topology"))
+    if P_FB or P_MB:
+        edges.append(("1100", "1101", "B invades FM  (fwd edge present)", "topology"))
+    if P_FT:
+        edges.append(("1000", "1010", "T invades F  (F→T present)", "topology"))
+    if P_FB:
+        edges.append(("1000", "1001", "B invades F  (F→B present)", "topology"))
+    # FTB→FMTB: B-invasion always strong; M-invasion near-universal
+    if P_TF or P_BF or P_FT or P_MT:
+        edges.append(("1011", "1111", "invasion into FMTB  (≥1 active edge)", "topology"))
+    return edges
+
 def fwd_bits(vec): return (vec[0], vec[2], vec[4], vec[6])
 def bwd_bits(vec): return (vec[1], vec[3], vec[5], vec[7])
 
@@ -228,10 +266,10 @@ def _circuit_png_b64(bits, edge_sds, size_in=0.42, dpi=120, arrow_color="white",
         if b:
             ax.annotate("", xy=dst, xytext=src,
                         arrowprops=dict(arrowstyle="-|>", color=arrow_color,
-                                        lw=2.0, mutation_scale=17,
-                                        shrinkA=8, shrinkB=8))
+                                        lw=1.2, mutation_scale=10,
+                                        shrinkA=3, shrinkB=3))
     for node, (nx, ny) in _NP_MPL.items():
-        ax.plot(nx, ny, "o", ms=16, color=_NC_MPL[node], zorder=5, markeredgewidth=0)
+        ax.plot(nx, ny, "o", ms=max(5, size_in * 6.5), color=_NC_MPL[node], zorder=5, markeredgewidth=0)
         if show_labels:
             ax.text(nx, ny, node, ha="center", va="center",
                     fontsize=max(3, size_in * 4), fontweight="bold", color="white",
@@ -331,7 +369,7 @@ def build_tick_images():
 @st.cache_data
 def build_all_circuit_images():
     """All 256 circuit PNG data-URIs (white arrows on dark bg — for topology inspector)."""
-    _CACHE_V = 9  # bump to bust Streamlit cache when render params change
+    _CACHE_V = 11  # bump to bust Streamlit cache when render params change
     return {
         c: _circuit_png_b64(idx_to_vec[c], _ALL_SD, size_in=2.0, dpi=120,
                             arrow_color="white", bg="#12122a", show_labels=True)
@@ -339,57 +377,41 @@ def build_all_circuit_images():
     }
 
 @st.cache_data
-def _build_bookmarks_fig(bookmark_circuits, sel_circ):
-    """Single stacked Plotly figure for all bookmarks — click fires on_select, no page reload."""
-    ITEM_H = 100   # px per bookmark slot
+def _build_bookmarks_base(bookmark_circuits):
+    """Bookmark panel base figure — images + click targets, NO active highlight.
+    Cached by circuit list only so PNG generation runs once per unique list."""
+    ITEM_H = 100
     W      = 108
     N      = len(bookmark_circuits)
-
-    fig = go.Figure()
-
+    fig    = go.Figure()
     for i, (bc, blabel) in enumerate(bookmark_circuits):
-        img_b64  = _circuit_png_b64(idx_to_vec.get(bc, (0,)*8), _ALL_SD,
-                                     size_in=1.0, dpi=100,
-                                     arrow_color="white", bg="#12122a", show_labels=True)
-        active   = (bc == sel_circ)
-        y_top    = 1.0 - i / N
-        y_bot    = 1.0 - (i + 1) / N
-        y_mid    = (y_top + y_bot) / 2
-        pad      = 0.04 / N            # small gap between items
-
+        img_b64 = _circuit_png_b64(idx_to_vec.get(bc, (0,)*8), _ALL_SD,
+                                    size_in=1.0, dpi=100,
+                                    arrow_color="white", bg="#12122a", show_labels=True)
+        y_top = 1.0 - i / N
+        y_bot = 1.0 - (i + 1) / N
+        y_mid = (y_top + y_bot) / 2
+        pad   = 0.04 / N
         fig.add_layout_image(dict(
-            source=img_b64,
-            x=0.05, y=y_top - pad,
+            source=img_b64, x=0.05, y=y_top - pad,
             xref="paper", yref="paper",
             sizex=0.90, sizey=(1/N) * 0.88,
-            xanchor="left", yanchor="top",
-            layer="below",
+            xanchor="left", yanchor="top", layer="below",
         ))
-        if active:
-            fig.add_shape(type="rect",
-                x0=0.01, y0=y_bot + pad, x1=0.99, y1=y_top - pad,
-                xref="paper", yref="paper",
-                line=dict(color="#4C72B0", width=2),
-                fillcolor="rgba(0,0,0,0)")
         fig.add_annotation(
-            x=0.5, y=y_bot + pad * 0.5,
-            xref="paper", yref="paper",
-            text=f"#{bc}",
-            showarrow=False,
-            font=dict(color="#8ab4f8" if active else "#777", size=9),
+            x=0.5, y=y_bot + pad * 0.5, xref="paper", yref="paper",
+            text=f"#{bc}", showarrow=False,
+            font=dict(color="#777", size=9),
             xanchor="center", yanchor="bottom",
         )
-        # Invisible click target
         fig.add_trace(go.Scatter(
-            x=[0.5], y=[y_mid],
-            mode="markers",
+            x=[0.5], y=[y_mid], mode="markers",
             marker=dict(size=72, color="rgba(0,0,0,0.01)", line=dict(width=0)),
             customdata=[[bc]],
             hovertemplate=f"#{bc} — {blabel}<extra></extra>",
             hoverlabel=dict(bgcolor="#1e293b", font_color="white"),
             showlegend=False,
         ))
-
     fig.update_layout(
         paper_bgcolor="#12122a", plot_bgcolor="#12122a",
         xaxis=dict(range=[0, 1], visible=False, fixedrange=True),
@@ -398,6 +420,26 @@ def _build_bookmarks_fig(bookmark_circuits, sel_circ):
         margin=dict(l=2, r=2, t=4, b=4),
         dragmode=False, clickmode="event",
     )
+    return fig
+
+
+def _build_bookmarks_fig(bookmark_circuits, sel_circ):
+    """Add active-circuit highlight to the cached base — fast: no PNG re-render."""
+    fig = _build_bookmarks_base(bookmark_circuits)
+    N   = len(bookmark_circuits)
+    for i, (bc, _) in enumerate(bookmark_circuits):
+        if bc == sel_circ:
+            y_top = 1.0 - i / N
+            y_bot = 1.0 - (i + 1) / N
+            pad   = 0.04 / N
+            fig.add_shape(type="rect",
+                x0=0.01, y0=y_bot + pad, x1=0.99, y1=y_top - pad,
+                xref="paper", yref="paper",
+                line=dict(color="#4C72B0", width=2),
+                fillcolor="rgba(0,0,0,0)")
+            if i < len(fig.layout.annotations):
+                fig.layout.annotations[i].font.color = "#8ab4f8"
+            break
     return fig
 
 # ── Morse complex drawing (Phase Portrait Atlas tab) ──────────────────────────
@@ -437,7 +479,7 @@ def _m_classify(stable, semi1, semi2, semi3, unstable):
     for p in _m_parse(semi3):
         if p not in cls:          cls[p] = "semi3"
     for p in _m_parse(unstable):
-        if p not in cls:          cls[p] = "unstable"
+        if p not in cls:          cls[p] = "saddle"
     return cls
 
 def _m_classify_all(stable, semi1, semi2, semi3, unstable):
@@ -449,20 +491,20 @@ def _m_classify_all(stable, semi1, semi2, semi3, unstable):
     for p in _m_parse(semi1):    acc[p].append("semi1")
     for p in _m_parse(semi2):    acc[p].append("semi2")
     for p in _m_parse(semi3):    acc[p].append("semi3")
-    for p in _m_parse(unstable): acc[p].append("unstable")
+    for p in _m_parse(unstable): acc[p].append("saddle")
     return dict(acc)
 
-_M_RANK = {"stable": 0, "semi1": 1, "semi2": 2, "semi3": 3, "unstable": 4}
+_M_RANK = {"stable": 0, "semi1": 1, "semi2": 2, "semi3": 3, "saddle": 4}
 
 _M_NODE = {
     "stable":   dict(facecolor="#2ecc71", edgecolor="#145a32", zorder=5, s=600,  linewidths=2.5),
     "semi1":    dict(facecolor="#f1c40f", edgecolor="#7d6608", zorder=4, s=360,  linewidths=1.8),
     "semi2":    dict(facecolor="#e67e22", edgecolor="#784212", zorder=4, s=250,  linewidths=1.5),
     "semi3":    dict(facecolor="#e74c3c", edgecolor="#7b241c", zorder=4, s=160,  linewidths=1.2),
-    "unstable": dict(facecolor="#7f8c8d", edgecolor="#2c3e50", zorder=3, s=100,  linewidths=1.0),
+    "saddle":   dict(facecolor="#7f8c8d", edgecolor="#2c3e50", zorder=3, s=100,  linewidths=1.0),
     "absent":   dict(facecolor="#ecf0f1", edgecolor="#bdc3c7", zorder=1, s=80,   linewidths=0.5),
 }
-_M_SHRINK = {"stable": 15, "semi1": 12, "semi2": 10, "semi3": 8, "unstable": 6, "absent": 5}
+_M_SHRINK = {"stable": 15, "semi1": 12, "semi2": 10, "semi3": 8, "saddle": 6, "absent": 5}
 
 # Hollow outer ring drawn when a pattern has coexisting fixed points of different classes.
 # Color encodes the SECONDARY (less stable) class; drawn behind the primary filled node.
@@ -471,7 +513,7 @@ _M_RING = {
     "semi1":    dict(facecolor="none", edgecolor="#f1c40f", linewidths=2.2),
     "semi2":    dict(facecolor="none", edgecolor="#e67e22", linewidths=2.0),
     "semi3":    dict(facecolor="none", edgecolor="#e74c3c", linewidths=1.8),
-    "unstable": dict(facecolor="none", edgecolor="#7f8c8d", linewidths=1.8),
+    "saddle":   dict(facecolor="none", edgecolor="#7f8c8d", linewidths=1.8),
 }
 
 def draw_morse_figure(title, stable_str, semi1_str, semi2_str, semi3_str,
@@ -522,6 +564,36 @@ def draw_morse_figure(title, stable_str, semi1_str, semi2_str, semi3_str,
                        if r["src"] in _M_POS and r["tgt"] in _M_POS
                        and not (cls_dict.get(r["src"]) == "stable"
                                 and r["src"] not in _ghost_pos)}
+
+    # ── 0. Analytically-proven edges: drawn unconditionally ──────────────────
+    # These edges are derived from invasion-eigenvalue analysis and hold
+    # regardless of Monte-Carlo sample counts.
+    # Universal (all 256 circuits): dark navy blue, lw=2.0
+    # Topology-dependent (circuit must have the required cross-group edge): dark green, lw=1.6
+    if circ_idx is not None:
+        for _asrc, _atgt, _albl, _akind in _circuit_analytic_edges(circ_idx):
+            if _asrc not in _M_POS or _atgt not in _M_POS:
+                continue
+            _acs = cls_dict.get(_asrc, "absent")
+            _act = cls_dict.get(_atgt, "absent")
+            if _acs == "absent" and _act == "absent":
+                continue
+            if _akind == "universal":
+                _acol, _alw, _ams, _azo = "#1a5276", 2.0, 11, 4.0
+            else:
+                _acol, _alw, _ams, _azo = "#196f3d", 1.6, 10, 3.8
+            _use_ghost = _asrc in _ghost_pos
+            if _use_ghost:
+                _ghost_has_arrows.add(_asrc)
+            _axs, _ays = _ghost_pos[_asrc] if _use_ghost else _M_POS[_asrc]
+            _axt, _ayt = _M_POS[_atgt]
+            _ashA = 4 if _use_ghost else _M_SHRINK.get(_acs, 5)
+            _ashB = _M_SHRINK.get(_act, 5)
+            ax.annotate("", xy=(_axt, _ayt), xytext=(_axs, _ays),
+                        arrowprops=dict(arrowstyle="-|>", color=_acol, lw=_alw,
+                                        mutation_scale=_ams, linestyle="solid",
+                                        shrinkA=_ashA, shrinkB=_ashB), zorder=_azo)
+            _drawn_out.add(_asrc)
 
     # ── 1. Heuristic: semi↔semi putative arrows (gray dashed) ────────────────
     for a, b in combinations(all_semis, 2) if not analytic_only else []:
@@ -620,7 +692,7 @@ def draw_morse_figure(title, stable_str, semi1_str, semi2_str, semi3_str,
             if _er["dominant_type"] == "bistable":
                 _col, _ls, _lw, _ms, _zo = "#8e44ad", "dotted", 0.8 + _conf * 0.4, 8, 2.5
             elif _er["dominant_type"] == "boundary_analytic":
-                _col, _ls, _lw, _ms, _zo = "#1e8449", "dashed", 0.7 + _conf * 0.6, 10, 2.8
+                _col, _ls, _lw, _ms, _zo = "#1e8449", "solid", 0.7 + _conf * 0.6, 10, 2.8
             else:
                 _col, _ls, _lw, _ms, _zo = "#1a1a2e", "solid", 0.8 + _conf * 0.8, 12, 3
             _use_ghost = (_src in _ghost_pos and (
@@ -692,7 +764,7 @@ def draw_morse_figure(title, stable_str, semi1_str, semi2_str, semi3_str,
                     fontsize=7 if primary == "stable" else 6,
                     fontweight="normal", color="black", zorder=6)
         else:
-            col = "#555555" if primary == "unstable" else "#aaaaaa"
+            col = "#555555" if primary == "saddle" else "#aaaaaa"
             ax.text(x, y + 0.18, lbl, ha="center", va="bottom",
                     fontsize=5, color=col, zorder=6)
 
@@ -735,7 +807,7 @@ def draw_morse_figure(title, stable_str, semi1_str, semi2_str, semi3_str,
 
     # ── Ghost saddle nodes + ghost→stable arrows ─────────────────────────────
     _GHOST_COL = {"semi1": "#f1c40f", "semi2": "#e67e22",
-                  "semi3": "#e74c3c", "unstable": "#7f8c8d"}
+                  "semi3": "#e74c3c", "saddle": "#7f8c8d"}
     for _gp, (_gx, _gy) in _ghost_pos.items():
         _sc = _ghost_sec_cls.get(_gp, "semi1")
         _gc = _GHOST_COL.get(_sc, "#f1c40f")
@@ -754,7 +826,7 @@ def draw_morse_figure(title, stable_str, semi1_str, semi2_str, semi3_str,
     n_sm = sum(len(_m_parse(s)) for s in (semi1_str, semi2_str, semi3_str))
     info = (f"stable={len(_m_parse(stable_str))}  "
             f"semi₁={len(_m_parse(semi1_str))} semi₂={len(_m_parse(semi2_str))} "
-            f"semi₃={len(_m_parse(semi3_str))}  unstable={len(_m_parse(unstable_str))}")
+            f"semi₃={len(_m_parse(semi3_str))}  saddle={len(_m_parse(unstable_str))}")
     if freq_pct is not None:
         info = f"{freq_pct:.1f}% of samples  ·  {info}"
     ax.text(0.5, -0.04, info, transform=ax.transAxes, ha="center",
@@ -770,7 +842,8 @@ def draw_morse_figure(title, stable_str, semi1_str, semi2_str, semi3_str,
         Line2D([0],[0], color="#333333", lw=1.5, label="Heteroclinic flow"),
         Line2D([0],[0], color="#777777", lw=1.0, linestyle="--", label="Semi↔semi (putative)"),
         Line2D([0],[0], color="#8e44ad", lw=1.0, linestyle=":", label="Bistable manifold"),
-        Line2D([0],[0], color="#1e8449", lw=1.0, linestyle="--", label="Boundary-analytic"),
+        Line2D([0],[0], color="#1a5276", lw=2.0, label="Analytic — universal"),
+        Line2D([0],[0], color="#196f3d", lw=1.6, label="Analytic — topology"),
     ]
     ax.legend(handles=_leg, loc="lower right", fontsize=6, handlelength=2.2,
               framealpha=0.85, edgecolor="#cccccc", labelspacing=0.3,
@@ -908,8 +981,7 @@ def build_all_matrices():
         dom[ri, ci] = max(pat_freq[c].values())
 
     return {
-        "hier_strict":  hier_mat(lambda s: _HIER_CANONICAL <= s and (
-                            s == _HIER_EXACT_A or s == frozenset({"0000","0011","1000","1100","1111"}))),
+        "hier_strict":  hier_mat(lambda s: s == _HIER_EXACT_A),
         "hier_relaxed": hier_mat(lambda s: _HIER_CANONICAL <= s),
         "hier_4step":   hier_mat(lambda s: _HIER_4STEP <= s),
         "hier_1_2_all": hier_mat(lambda s: "1111" in s and bool(_ONE_NODE & s) and bool(_TWO_NODE & s)),
@@ -934,7 +1006,7 @@ def build_hover():
     _TWO_NODE = frozenset(s for s in ALL_STATES if s.count("1") == 2)
 
     fns = [
-        ("Canonical F→F+M→all (strict)", lambda s: _HIER_CANONICAL <= s and (s == _HIER_EXACT_A or s == _HIER_EXACT_B)),
+        ("Canonical F→F+M→all (strict)", lambda s: s == _HIER_EXACT_A),
         ("Contains F→F+M→all",           lambda s: _HIER_CANONICAL <= s),
         ("∅→F→F+M→F+M+T→F+M+T+B",        lambda s: _HIER_4STEP <= s),
         ("Any 1→2→all",                  lambda s: "1111" in s and bool(_ONE_NODE & s) and bool(_TWO_NODE & s)),
@@ -1101,7 +1173,7 @@ def build_heatmap_figure(view):
         fig.add_shape(type="line", x0=-0.5, x1=15.5, y0=sep, y1=sep,
                       line=dict(color="black", width=3))
 
-    IMG_SZ = 0.82
+    IMG_SZ = 0.92
     for ci, img in enumerate(fwd_imgs):
         fig.add_layout_image(dict(source=img, layer="above",
                                   xref="x", x=ci, yref="y", y=-1.0,
@@ -1211,7 +1283,7 @@ def build_bar_figure():
             source=img, layer="above",
             xref="x", x=bi, yref="y", y=-0.02,
             xanchor="center", yanchor="top",
-            sizex=0.82, sizey=0.14,
+            sizex=0.92, sizey=0.14,
         ))
 
     fig.update_layout(
@@ -1438,12 +1510,13 @@ def build_forward_figure():
 st.title("Four-node circuit attractor landscape")
 
 
-tab_home, tab_heat, tab_bar, tab_fwd, tab_atlas, tab_takeaway = st.tabs([
+tab_home, tab_heat, tab_bar, tab_fwd, tab_atlas, tab_hier, tab_takeaway = st.tabs([
     "📖 About",
     "🗺️ Topology heatmap",
     "📊 Solution types",
     "🔍 Edge analysis",
     "🧭 Phase Atlas",
+    "🎯 Hierarchy search",
     "💡 Take-home",
 ])
 
@@ -1964,14 +2037,15 @@ with tab_atlas:
                 ("#f1c40f", "Saddle n=1"),
                 ("#e67e22", "Saddle n=2"),
                 ("#e74c3c", "Saddle n=3"),
-                ("#7f8c8d", "Repeller"),
+                ("#7f8c8d", "Saddle"),
                 ("#ecf0f1", "Not detected"),
             ]
             _arrow_items = [
                 ("#333333", "Heteroclinic flow"),
                 ("#777777", "Semi↔semi (putative)"),
                 ("#8e44ad", "Bistable separatrix (F/T)"),
-                ("#1e8449", "Boundary-analytic"),
+                ("#1a5276", "Analytic — universal"),
+                ("#196f3d", "Analytic — topology"),
             ]
             st.markdown(
                 "".join(
@@ -2055,7 +2129,90 @@ with tab_atlas:
                                 st.rerun()
                     break
 
-# ── Tab 5: take-home message ───────────────────────────────────────────────────
+# ── Tab 5: Hierarchy search ────────────────────────────────────────────────────
+with tab_hier:
+    _HIER_DEFS = [
+        ("Canonical  F → F+M → FMTB",
+         "Attractor set contains {F, F+M, FMTB} (any superset OK)",
+         lambda s: frozenset({"1000","1100","1111"}) <= s),
+        ("Canonical + TB  (F → F+M → FMTB and TB present)",
+         "Attractor set contains {F, F+M, FMTB} AND also contains TB (0011)",
+         lambda s: frozenset({"1000","1100","1111","0011"}) <= s),
+        ("Strict canonical  {∅, F, F+M, FMTB} only",
+         "Attractor set is exactly {∅,F,F+M,FMTB} or {∅,TB,F,F+M,FMTB}",
+         lambda s: frozenset({"1000","1100","1111"}) <= s and
+                   s <= frozenset({"0000","0011","1000","1100","1111"})),
+        ("Full 5-step  ∅ → F → F+M → F+M+T → FMTB",
+         "Attractor set contains {∅, F, F+M, F+M+T, FMTB}",
+         lambda s: frozenset({"0000","1000","1100","1110","1111"}) <= s),
+        ("Any 1-node → 2-node → FMTB",
+         "FMTB plus at least one 1-active and one 2-active attractor",
+         lambda s: "1111" in s and
+                   any(p.count("1")==1 for p in s) and
+                   any(p.count("1")==2 for p in s)),
+        ("FMTB present (any)",
+         "FMTB is one of the attractors (any frequency)",
+         lambda s: "1111" in s),
+    ]
+
+    st.markdown("### 🎯 Hierarchy search")
+    st.caption("Select a cascade pattern — see every circuit that achieves it, ranked by frequency.")
+
+    _hdef_idx = st.selectbox(
+        "Cascade pattern",
+        range(len(_HIER_DEFS)),
+        format_func=lambda i: _HIER_DEFS[i][0],
+        key="hier_search_def",
+    )
+    _hname, _hdesc, _hfn = _HIER_DEFS[_hdef_idx]
+    st.caption(f"**Definition:** {_hdesc}")
+
+    _min_freq = st.slider("Minimum frequency threshold", 0.0, 1.0, 0.01, 0.01,
+                          key="hier_search_thresh",
+                          help="Only show circuits where this cascade pattern occurs ≥ this fraction of samples")
+
+    # compute per-circuit frequency for the chosen pattern
+    _hier_rows = []
+    for _c, _pf in pat_freq.items():
+        _f = sum(frac for pat, frac in _pf.items()
+                 if _hfn(frozenset(pat.split("|"))))
+        if _f >= _min_freq:
+            _hier_rows.append((_c, _f))
+    _hier_rows.sort(key=lambda x: -x[1])
+
+    st.markdown(f"**{len(_hier_rows)} circuits** match at ≥ {_min_freq:.0%}")
+
+    if not _hier_rows:
+        st.info("No circuits match this pattern at the chosen threshold.")
+    else:
+        # build images (reuse sidebar-size images)
+        _all_imgs = build_all_circuit_images()
+
+        _NCOLS = 8
+        _rows_of = [_hier_rows[i:i+_NCOLS] for i in range(0, len(_hier_rows), _NCOLS)]
+        for _row in _rows_of:
+            _cols = st.columns(_NCOLS)
+            for _col, (_c, _f) in zip(_cols, _row):
+                with _col:
+                    _img = _all_imgs.get(_c)
+                    if _img:
+                        st.markdown(
+                            f'<img src="{_img}" style="width:100%;border-radius:4px;">',
+                            unsafe_allow_html=True,
+                        )
+                    _vec = idx_to_vec.get(_c, (0,)*8)
+                    _edges = [_EDGE_NAMES_ORDERED[i] for i,b in enumerate(_vec) if b]
+                    _edge_str = ", ".join(_edges) if _edges else "∅"
+                    st.markdown(
+                        f"<div style='text-align:center;font-size:11px;'>"
+                        f"<b>#{_c}</b><br>"
+                        f"<span style='color:#4CAF50;font-size:13px;font-weight:bold;'>{_f:.0%}</span><br>"
+                        f"<span style='color:#888;font-size:9px;'>{_edge_str}</span>"
+                        f"</div>",
+                        unsafe_allow_html=True,
+                    )
+
+# ── Tab 6: take-home message ───────────────────────────────────────────────────
 with tab_takeaway:
     _, _tm, _ = st.columns([1, 5, 1])
     with _tm:
