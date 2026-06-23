@@ -1145,12 +1145,18 @@ VIEWS = [
 ]
 
 # ── Heatmap figure ─────────────────────────────────────────────────────────────
+def _ann_text(val, fmt):
+    s = format(val, fmt)
+    if s == "0%" and val > 0:
+        return format(val, ".1%")
+    return s
+
 def build_heatmap_figure(view):
     z, zmin, zmax = mats[view["key"]], view["zmin"], view["zmax"]
     span = zmax - zmin if zmax > zmin else 1
     fmt  = view["ann_fmt"]
     annotations = [
-        dict(x=ci, y=ri, text=format(z[ri, ci], fmt),
+        dict(x=ci, y=ri, text=_ann_text(z[ri, ci], fmt),
              showarrow=False, xref="x", yref="y",
              font=dict(size=9, color="white" if (z[ri,ci]-zmin)/span > 0.55 else "black"))
         for ri in range(16) for ci in range(16) if not np.isnan(z[ri, ci])
